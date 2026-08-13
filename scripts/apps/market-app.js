@@ -1,6 +1,7 @@
-import { MODULE_ID } from "../constants.js";
-import { getShopsArray } from "../shop-data.js";
+import { MODULE_ID, DEFAULT_ACCENT } from "../constants.js";
+import { getShopsArray, getTheme } from "../shop-data.js";
 import { ShopApp } from "./shop-app.js";
+import { applyRowVars } from "../theme.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -11,14 +12,14 @@ export class MarketApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static DEFAULT_OPTIONS = {
     id: MarketApp.APP_ID,
-    classes: ["shopkeeper", "shopkeeper-market"],
+    classes: ["shopkeeper", "shopkeeper-market-app"],
     tag: "div",
     window: {
       title: "SHOPKEEPER.Market.Title",
       icon: "fa-solid fa-shop",
       resizable: true
     },
-    position: { width: 560, height: 680 },
+    position: { width: 620, height: 700 },
     actions: {
       openShop: MarketApp.#onOpenShop
     }
@@ -34,18 +35,38 @@ export class MarketApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** @override */
   async _prepareContext(_options) {
     const isGM = game.user.isGM;
-    const shops = getShopsArray().filter(s => isGM || s.visible);
+    const shops = getShopsArray()
+      .filter(s => isGM || s.visible)
+      .map(shop => ({
+        ...shop,
+        accent: shop.accent || DEFAULT_ACCENT,
+        // Used by the heraldic-banner theme's shield badge.
+        sigil: (shop.name?.trim()?.[0] ?? "?").toUpperCase()
+      }));
+
     return {
       isGM,
       shops,
-      hasShops: shops.length > 0
+      hasShops: shops.length > 0,
+      theme: getTheme()
     };
+  }
+
+  /**
+   * Themes read the shop image and accent colour from CSS custom properties.
+   * We set them here rather than in the template so that image paths containing
+   * quotes or spaces can't break out of the inline style attribute.
+   * @override
+   */
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    applyRowVars(this.element);
   }
 
   static #onOpenShop(_event, target) {
     const shopId = target.closest("[data-shop-id]")?.dataset.shopId;
     if (!shopId) return;
-    new ShopApp({ shopId }).render(true);
+    ShopApp.openOrFocus(shopId);
   }
 
   /** Open the Market, or bring an already-open one to the front. */

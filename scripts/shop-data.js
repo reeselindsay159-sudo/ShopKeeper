@@ -1,7 +1,7 @@
-import { MODULE_ID, SETTINGS } from "./constants.js";
+import { MODULE_ID, SETTINGS, MARKET_THEMES, DEFAULT_THEME, DEFAULT_ACCENT } from "./constants.js";
 
 /**
- * Register the world-scoped setting that stores every shop.
+ * Register the world-scoped settings that store shops and the market theme.
  * World-scope settings can only be written by a GM client, which is why all
  * mutation helpers below are only ever invoked from GM contexts (the Edit
  * Shops app, and the GM-side socket handler that processes purchases).
@@ -13,11 +13,52 @@ export function registerSettings() {
     type: Object,
     default: {}
   });
+
+  game.settings.register(MODULE_ID, SETTINGS.THEME, {
+    scope: "world",
+    config: false,
+    type: String,
+    default: DEFAULT_THEME
+  });
+}
+
+/* -------------------------------------------- */
+/*  Theme                                       */
+/* -------------------------------------------- */
+
+/** @returns {string} the active market theme id, guaranteed to be a known theme */
+export function getTheme() {
+  const value = game.settings.get(MODULE_ID, SETTINGS.THEME);
+  return MARKET_THEMES[value] ? value : DEFAULT_THEME;
+}
+
+/** Set the active market theme. GM only. */
+export async function setTheme(themeId) {
+  if (!game.user.isGM) throw new Error("Only a GM may change the market theme.");
+  if (!MARKET_THEMES[themeId]) throw new Error(`Unknown theme "${themeId}".`);
+  await game.settings.set(MODULE_ID, SETTINGS.THEME, themeId);
+}
+
+/* -------------------------------------------- */
+/*  Shops                                       */
+/* -------------------------------------------- */
+
+/**
+ * Normalize a stored shop so that fields added in later module versions are
+ * always present on shops created by earlier ones.
+ */
+function normalizeShop(shop) {
+  shop.accent ??= DEFAULT_ACCENT;
+  shop.description ??= "";
+  shop.inventory ??= [];
+  return shop;
 }
 
 /** @returns {Record<string, object>} the raw shops map, keyed by shop id */
 export function getShops() {
-  return foundry.utils.deepClone(game.settings.get(MODULE_ID, SETTINGS.SHOPS) ?? {});
+  const shops = foundry.utils.deepClone(game.settings.get(MODULE_ID, SETTINGS.SHOPS) ?? {});
+  for (const shop of Object.values(shops)) normalizeShop(shop);
+  return shops;
 }
 
 /** @returns {object[]} all shops as an array, sorted by name */
@@ -41,21 +82,22 @@ async function saveShops(shops) {
 
 /**
  * Create a new, empty shop. GM only.
- * @param {{name?: string, description?: string, img?: string}} data
+ * @param {{name?: string, description?: string, img?: string, accent?: string}} data
  * @returns {Promise<object>} the created shop
  */
 export async function createShop(data = {}) {
   if (!game.user.isGM) throw new Error("Only a GM may create shops.");
   const shops = getShops();
   const id = foundry.utils.randomID();
-  const shop = {
+  const shop = normalizeShop({
     id,
     name: data.name?.trim() || "New Shop",
     description: data.description?.trim() || "",
     img: data.img || "icons/svg/shop.svg",
+    accent: data.accent || DEFAULT_ACCENT,
     visible: false,
     inventory: []
-  };
+  });
   shops[id] = shop;
   await saveShops(shops);
   return shop;
@@ -63,7 +105,7 @@ export async function createShop(data = {}) {
 
 /**
  * Merge an update into an existing shop's top-level fields (name, description,
- * img, visible). GM only.
+ * img, accent, visible). GM only.
  */
 export async function updateShop(id, data = {}) {
   if (!game.user.isGM) throw new Error("Only a GM may update shops.");

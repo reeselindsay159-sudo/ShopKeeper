@@ -10,7 +10,24 @@ An in-game shop interface module for Foundry VTT (v13+) and the dnd5e system.
 - **Market window** — thick horizontal rows, one per shop, each with an image, name, and short description. Click a row to open that shop.
 - **Individual shop window** — shop image on the left, a 4-column inventory table (item, cost, quantity, add-to-cart) on the right, and a cart at the bottom with quantity steppers, per-line removal, a running total, and a Checkout button.
 - **Checkout** deducts gold (auto-converting across pp/gp/ep/sp/cp) from the player's assigned character, adds the purchased items to their inventory, and posts a receipt to chat for the whole table to see. If they can't afford it, they get a "Not enough Coin" popup instead — nothing is charged.
-- **Edit Shops (GM)** — create/delete shops, toggle whether a shop is visible to players, set its image/name/description, and drag & drop items from the sidebar, a compendium, or an actor sheet straight into its inventory. Each inventory row has an editable price (gp) and quantity, plus an "unlimited stock" checkbox.
+- **Edit Shops (GM)** — create/delete shops, toggle whether a shop is visible to players, set its image/name/description/accent colour, and drag & drop items from the sidebar, a compendium, or an actor sheet straight into its inventory. Each inventory row has an editable price (gp) and quantity, plus an "unlimited stock" checkbox.
+- **Market themes** — nine visual styles for the Market's shop rows, picked by the GM under **Edit Shops → Market Theme**. The picker previews each theme using your own shop art, and the choice applies to everyone in the world.
+
+## Market themes
+
+| Theme | Look |
+| --- | --- |
+| Cinematic Banner | Full-bleed art behind a dark scrim, with a slow zoom on hover |
+| Illuminated Tome | Parchment and gilt rules, like a page from a spellbook |
+| Hanging Shop Sign | Carved wood and brass rivets that sway when hovered |
+| Arcane Glass | Frosted glass with a coloured halo and a light sweep |
+| Tavern Chalkboard | Slate in a wooden frame, chalked by hand |
+| Heraldic Banner | Hanging cloth with a shield badge in the shop's colours |
+| Stained Glass | Leaded cathedral panes lit from behind |
+| Purple Haze | Drifting violet mist over the storefront — dark fantasy / Drakkenheim |
+| Black Market Crate | Stencilled smuggler's crate with iron banding |
+
+Four themes (Cinematic, Arcane Glass, Heraldic Banner, Stained Glass) use each shop's **accent colour**, set per shop in the editor. Purple Haze animates continuously; it respects the OS "reduce motion" accessibility preference and stops animating when that is enabled.
 
 ## Installation
 

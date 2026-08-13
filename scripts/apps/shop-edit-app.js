@@ -1,5 +1,9 @@
-import { MODULE_ID } from "../constants.js";
-import { getShopsArray, getShop, createShop, updateShop, deleteShop, setShopInventory } from "../shop-data.js";
+import { MODULE_ID, MARKET_THEMES, ANIMATED_THEMES, DEFAULT_ACCENT } from "../constants.js";
+import {
+  getShopsArray, getShop, createShop, updateShop, deleteShop, setShopInventory,
+  getTheme, setTheme
+} from "../shop-data.js";
+import { applyRowVars } from "../theme.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -21,6 +25,8 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(options) {
     super(options);
     this.isShopkeeperApp = true;
+    /** @type {"shops"|"theme"} which panel the main area is showing */
+    this.mode = "shops";
     this.selectedShopId = null;
     /** In-memory copy of the selected shop being edited, saved explicitly. */
     this._draft = null;
@@ -28,28 +34,31 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static DEFAULT_OPTIONS = {
     id: ShopEditApp.APP_ID,
-    classes: ["shopkeeper", "shopkeeper-edit"],
+    classes: ["shopkeeper", "shopkeeper-edit-app"],
     tag: "div",
     window: {
       title: "SHOPKEEPER.Edit.Title",
       icon: "fa-solid fa-screwdriver-wrench",
       resizable: true
     },
-    position: { width: 980, height: 740 },
+    position: { width: 1020, height: 760 },
     actions: {
       selectShop: ShopEditApp.#onSelectShop,
       newShop: ShopEditApp.#onNewShop,
       deleteShop: ShopEditApp.#onDeleteShop,
       browseImage: ShopEditApp.#onBrowseImage,
       removeItem: ShopEditApp.#onRemoveItem,
-      save: ShopEditApp.#onSave
+      save: ShopEditApp.#onSave,
+      showThemes: ShopEditApp.#onShowThemes,
+      showShops: ShopEditApp.#onShowShops,
+      pickTheme: ShopEditApp.#onPickTheme
     }
   };
 
   static PARTS = {
     content: {
       template: `modules/${MODULE_ID}/templates/shop-edit.hbs`,
-      scrollable: [".shopkeeper-edit-shop-list", ".shopkeeper-edit-inventory-list"]
+      scrollable: [".shopkeeper-edit-shop-list", ".shopkeeper-edit-main"]
     }
   };
 
@@ -72,28 +81,62 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this._draft = foundry.utils.deepClone(getShop(this.selectedShopId));
     }
 
+    const activeTheme = getTheme();
+
+    // Sample content for the theme gallery: use a real shop where possible so
+    // the GM previews their own art, not a placeholder.
+    const sample = shops[0] ?? null;
+    const themes = Object.values(MARKET_THEMES).map(theme => ({
+      id: theme.id,
+      label: game.i18n.localize(theme.label),
+      hint: game.i18n.localize(theme.hint),
+      usesAccent: theme.accent,
+      animated: ANIMATED_THEMES.has(theme.id),
+      active: theme.id === activeTheme,
+      sampleName: sample?.name ?? game.i18n.localize("SHOPKEEPER.Themes.SampleName"),
+      sampleDesc: sample?.description || game.i18n.localize("SHOPKEEPER.Themes.SampleDesc"),
+      sampleImg: sample?.img ?? "icons/svg/shop.svg",
+      sampleAccent: sample?.accent ?? DEFAULT_ACCENT,
+      sampleSigil: (sample?.name?.trim()?.[0] ?? "S").toUpperCase()
+    }));
+
     return {
       shops,
       hasShops: shops.length > 0,
       selectedShopId: this.selectedShopId,
       draft: this._draft,
-      hasInventory: !!this._draft?.inventory?.length
+      hasInventory: !!this._draft?.inventory?.length,
+      mode: this.mode,
+      showingThemes: this.mode === "theme",
+      themes,
+      activeTheme
     };
   }
 
   /** @override */
   _onRender(context, options) {
     super._onRender?.(context, options);
+
     const dropzone = this.element.querySelector(".shopkeeper-dropzone");
     if (dropzone) {
       dropzone.addEventListener("dragover", event => event.preventDefault());
       dropzone.addEventListener("drop", this._onDropItem.bind(this));
     }
+
+    // Live-update the image preview and accent swatch as the GM edits.
+    const accentInput = this.element.querySelector('[name="shop-accent"]');
+    if (accentInput) {
+      accentInput.addEventListener("input", event => {
+        if (this._draft) this._draft.accent = event.target.value;
+      });
+    }
+
+    applyRowVars(this.element);
   }
 
-  // ---------------------------------------------------------------------
-  // Draft helpers
-  // ---------------------------------------------------------------------
+  /* -------------------------------------------- */
+  /*  Draft helpers                               */
+  /* -------------------------------------------- */
 
   /** Read any uncontrolled form inputs currently on screen into this._draft. */
   _syncFormIntoDraft() {
@@ -108,6 +151,9 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     const visibleInput = root.querySelector('[name="shop-visible"]');
     if (visibleInput) this._draft.visible = visibleInput.checked;
+
+    const accentInput = root.querySelector('[name="shop-accent"]');
+    if (accentInput) this._draft.accent = accentInput.value;
 
     root.querySelectorAll(".shopkeeper-edit-inventory-row").forEach(row => {
       const entryId = row.dataset.entryId;
@@ -154,13 +200,34 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.render();
   }
 
-  // ---------------------------------------------------------------------
-  // Actions
-  // ---------------------------------------------------------------------
+  /* -------------------------------------------- */
+  /*  Actions                                     */
+  /* -------------------------------------------- */
+
+  static #onShowThemes(_event, _target) {
+    if (this._draft) this._syncFormIntoDraft();
+    this.mode = "theme";
+    this.render();
+  }
+
+  static #onShowShops(_event, _target) {
+    this.mode = "shops";
+    this.render();
+  }
+
+  static async #onPickTheme(_event, target) {
+    const themeId = target.closest("[data-theme-id]")?.dataset.themeId;
+    if (!themeId || themeId === getTheme()) return;
+    await setTheme(themeId);
+    this.render();
+    // Any open Market windows refresh via the updateSetting hook in main.js.
+  }
 
   static #onSelectShop(_event, target) {
     const id = target.closest("[data-shop-id]")?.dataset.shopId;
-    if (!id || id === this.selectedShopId) return;
+    if (!id) return;
+    if (id === this.selectedShopId && this.mode === "shops") return;
+    this.mode = "shops";
     this.selectedShopId = id;
     this._draft = null;
     this.render();
@@ -168,6 +235,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async #onNewShop(_event, _target) {
     const shop = await createShop({});
+    this.mode = "shops";
     this.selectedShopId = shop.id;
     this._draft = foundry.utils.deepClone(shop);
     this.render();
@@ -222,6 +290,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       name: this._draft.name?.trim() || "Unnamed Shop",
       description: this._draft.description ?? "",
       img: this._draft.img || "icons/svg/shop.svg",
+      accent: this._draft.accent || DEFAULT_ACCENT,
       visible: !!this._draft.visible
     });
     await setShopInventory(this.selectedShopId, this._draft.inventory);

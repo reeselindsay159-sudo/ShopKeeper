@@ -1,4 +1,4 @@
-import { MODULE_ID } from "./constants.js";
+import { MODULE_ID, SETTINGS } from "./constants.js";
 import { registerSettings } from "./shop-data.js";
 import { initSocket } from "./socket.js";
 import { MarketApp } from "./apps/market-app.js";
@@ -21,9 +21,14 @@ Hooks.once("ready", () => {
 });
 
 // Keep any open Shopkeeper windows (Market, Shop, Edit Shops) in sync when the
-// underlying shop data changes on any client.
+// underlying shop data or the chosen market theme changes on any client.
+const WATCHED_SETTINGS = new Set([
+  `${MODULE_ID}.${SETTINGS.SHOPS}`,
+  `${MODULE_ID}.${SETTINGS.THEME}`
+]);
+
 Hooks.on("updateSetting", setting => {
-  if (setting.key !== `${MODULE_ID}.shops`) return;
+  if (!WATCHED_SETTINGS.has(setting.key)) return;
   for (const app of foundry.applications.instances.values()) {
     if (app.isShopkeeperApp) app.render(false);
   }
