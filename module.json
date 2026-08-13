@@ -39,7 +39,7 @@
   "socket": true,
   "url": "https://github.com/reeselindsay159-sudo/ShopKeeper",
   "manifest": "https://github.com/reeselindsay159-sudo/ShopKeeper/releases/latest/download/module.json",
-  "download": "https://github.com/reeselindsay159-sudo/ShopKeeper/releases/latest/download/shopkeeper.zip",
+  "download": "https://github.com/reeselindsay159-sudo/ShopKeeper/releases/latest/download/shopkeeper-release.zip",
   "bugs": "https://github.com/reeselindsay159-sudo/ShopKeeper/issues",
   "license": "LICENSE",
   "readme": "README.md"
