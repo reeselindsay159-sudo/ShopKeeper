@@ -1,0 +1,80 @@
+<div class="shopkeeper-shop">
+  <div class="shopkeeper-shop-main">
+    <div class="shopkeeper-shop-image">
+      <img src="{{shop.img}}" alt="{{shop.name}}">
+      {{#if shop.description}}<p class="shopkeeper-shop-desc">{{shop.description}}</p>{{/if}}
+    </div>
+
+    <div class="shopkeeper-shop-inventory">
+      {{#if hasInventory}}
+        <table class="shopkeeper-inventory-table">
+          <thead>
+            <tr>
+              <th class="col-item">{{localize "SHOPKEEPER.Shop.ColumnItem"}}</th>
+              <th class="col-cost">{{localize "SHOPKEEPER.Shop.ColumnCost"}}</th>
+              <th class="col-qty">{{localize "SHOPKEEPER.Shop.ColumnQty"}}</th>
+              <th class="col-add">{{localize "SHOPKEEPER.Shop.ColumnAdd"}}</th>
+            </tr>
+          </thead>
+          <tbody class="shopkeeper-inventory-list">
+            {{#each inventory as |entry|}}
+              <tr class="shopkeeper-inventory-row{{#if entry.outOfStock}} shopkeeper-out-of-stock{{/if}}" data-entry-id="{{entry.id}}">
+                <td class="shopkeeper-item-name">
+                  <img class="shopkeeper-item-icon" src="{{entry.img}}" alt="">
+                  <span>{{entry.name}}</span>
+                </td>
+                <td class="col-cost">{{entry.price}} gp</td>
+                <td class="col-qty">{{#if entry.limited}}{{entry.quantity}}{{else}}&infin;{{/if}}</td>
+                <td class="shopkeeper-add-cell">
+                  {{#unless entry.outOfStock}}
+                    <input type="number" class="shopkeeper-qty-input" data-qty-input min="1" value="1">
+                    <button type="button" class="shopkeeper-add-btn" data-action="addToCart" title="{{localize 'SHOPKEEPER.Shop.ColumnAdd'}}">
+                      <i class="fa-solid fa-cart-plus"></i>
+                    </button>
+                  {{else}}
+                    <span class="shopkeeper-oos-label">{{localize "SHOPKEEPER.Shop.OutOfStock"}}</span>
+                  {{/unless}}
+                </td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      {{else}}
+        <p class="shopkeeper-empty">{{localize "SHOPKEEPER.Shop.InventoryEmpty"}}</p>
+      {{/if}}
+    </div>
+  </div>
+
+  <div class="shopkeeper-cart">
+    <h3 class="shopkeeper-cart-title">{{localize "SHOPKEEPER.Shop.Cart"}}</h3>
+
+    {{#if hasCart}}
+      <ul class="shopkeeper-cart-list">
+        {{#each cartLines as |line|}}
+          <li class="shopkeeper-cart-line" data-entry-id="{{line.entryId}}">
+            <img class="shopkeeper-cart-img" src="{{line.img}}" alt="">
+            <span class="shopkeeper-cart-name">{{line.name}}</span>
+            <span class="shopkeeper-cart-stepper">
+              <button type="button" data-action="cartDecrease" title="Decrease"><i class="fa-solid fa-minus"></i></button>
+              <span class="shopkeeper-cart-qty">{{line.qty}}</span>
+              <button type="button" data-action="cartIncrease" title="Increase"><i class="fa-solid fa-plus"></i></button>
+            </span>
+            <span class="shopkeeper-cart-linetotal">{{line.lineTotal}} gp</span>
+            <button type="button" class="shopkeeper-cart-remove" data-action="cartRemove" title="{{localize 'SHOPKEEPER.Edit.RemoveItem'}}">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </li>
+        {{/each}}
+      </ul>
+    {{else}}
+      <p class="shopkeeper-empty">{{localize "SHOPKEEPER.Shop.CartEmpty"}}</p>
+    {{/if}}
+
+    <div class="shopkeeper-cart-footer">
+      <div class="shopkeeper-cart-total">{{localize "SHOPKEEPER.Shop.Total"}}: <strong>{{total}} gp</strong></div>
+      <button type="button" class="shopkeeper-checkout-btn" data-action="checkout" {{#unless hasCart}}disabled{{/unless}}>
+        <i class="fa-solid fa-coins"></i> {{localize "SHOPKEEPER.Shop.Checkout"}}
+      </button>
+    </div>
+  </div>
+</div>

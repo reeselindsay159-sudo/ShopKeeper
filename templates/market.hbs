@@ -1,0 +1,21 @@
+<div class="shopkeeper-market">
+  {{#if hasShops}}
+    <div class="shopkeeper-market-list">
+      {{#each shops as |shop|}}
+        <div class="shopkeeper-shop-row{{#unless shop.visible}} shopkeeper-hidden-row{{/unless}}"
+             data-shop-id="{{shop.id}}" data-action="openShop" role="button" tabindex="0">
+          <img class="shopkeeper-shop-row-img" src="{{shop.img}}" alt="{{shop.name}}">
+          <div class="shopkeeper-shop-row-text">
+            <div class="shopkeeper-shop-row-name">
+              {{shop.name}}
+              {{#if ../isGM}}{{#unless shop.visible}}<span class="shopkeeper-badge">Hidden</span>{{/unless}}{{/if}}
+            </div>
+            <div class="shopkeeper-shop-row-desc">{{shop.description}}</div>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  {{else}}
+    <p class="shopkeeper-empty">{{#if isGM}}{{localize "SHOPKEEPER.Market.EmptyGM"}}{{else}}{{localize "SHOPKEEPER.Market.Empty"}}{{/if}}</p>
+  {{/if}}
+</div>
