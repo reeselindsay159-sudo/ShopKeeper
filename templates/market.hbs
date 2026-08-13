@@ -1,0 +1,28 @@
+<div class="shopkeeper-market">
+  {{#if hasShops}}
+    <div class="shopkeeper-market-list sk-theme-{{theme}}">
+      {{#each shops as |shop|}}
+        <div class="sk-row{{#unless shop.visible}} sk-hidden-shop{{/unless}}"
+             data-shop-id="{{shop.id}}"
+             data-shop-img="{{shop.img}}"
+             data-shop-accent="{{shop.accent}}"
+             data-action="openShop"
+             role="button" tabindex="0"
+             aria-label="{{shop.name}}">
+          <div class="sk-art"><img src="{{shop.img}}" alt=""></div>
+          <div class="sk-text">
+            <div class="sk-name">
+              {{shop.name}}{{#if ../isGM}}{{#unless shop.visible}} <i class="fa-solid fa-eye-slash sk-hidden-icon" title="{{localize 'SHOPKEEPER.Market.HiddenFromPlayers'}}"></i>{{/unless}}{{/if}}
+            </div>
+            <div class="sk-desc">{{shop.description}}</div>
+          </div>
+          <div class="sk-sigil" aria-hidden="true">{{shop.sigil}}</div>
+          <div class="sk-stamp" aria-hidden="true"></div>
+          <div class="sk-chev" aria-hidden="true">&#10095;</div>
+        </div>
+      {{/each}}
+    </div>
+  {{else}}
+    <p class="shopkeeper-empty">{{#if isGM}}{{localize "SHOPKEEPER.Market.EmptyGM"}}{{else}}{{localize "SHOPKEEPER.Market.Empty"}}{{/if}}</p>
+  {{/if}}
+</div>

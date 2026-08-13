@@ -1,0 +1,166 @@
+<div class="shopkeeper-edit">
+  <div class="shopkeeper-edit-sidebar">
+    <button type="button" class="shopkeeper-new-shop-btn" data-action="newShop">
+      <i class="fa-solid fa-plus"></i> {{localize "SHOPKEEPER.Edit.NewShop"}}
+    </button>
+    <button type="button" class="shopkeeper-theme-btn{{#if showingThemes}} active{{/if}}" data-action="showThemes">
+      <i class="fa-solid fa-palette"></i> {{localize "SHOPKEEPER.Themes.Button"}}
+    </button>
+
+    <div class="shopkeeper-edit-shop-list">
+      {{#each shops as |shop|}}
+        <div class="shopkeeper-edit-shop-item{{#if (and (eq shop.id ../selectedShopId) (not ../showingThemes))}} active{{/if}}"
+             data-shop-id="{{shop.id}}" data-action="selectShop">
+          <img src="{{shop.img}}" alt="">
+          <span class="shopkeeper-edit-shop-item-name">{{shop.name}}</span>
+          {{#unless shop.visible}}<i class="fa-solid fa-eye-slash shopkeeper-hidden-icon" title="{{localize 'SHOPKEEPER.Market.HiddenFromPlayers'}}"></i>{{/unless}}
+          <button type="button" class="shopkeeper-edit-shop-delete" data-action="deleteShop" title="{{localize 'SHOPKEEPER.Edit.DeleteShop'}}">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+      {{/each}}
+    </div>
+  </div>
+
+  <div class="shopkeeper-edit-main">
+
+    {{#if showingThemes}}
+      {{!-- ============ THEME GALLERY ============ --}}
+      <div class="shopkeeper-theme-gallery">
+        <div class="shopkeeper-theme-header">
+          <div>
+            <h3>{{localize "SHOPKEEPER.Themes.Heading"}}</h3>
+            <p class="shopkeeper-theme-sub">{{localize "SHOPKEEPER.Themes.Subheading"}}</p>
+          </div>
+          <button type="button" class="shopkeeper-back-btn" data-action="showShops">
+            <i class="fa-solid fa-arrow-left"></i> {{localize "SHOPKEEPER.Themes.BackToShops"}}
+          </button>
+        </div>
+
+        {{#each themes as |theme|}}
+          <div class="shopkeeper-theme-option{{#if theme.active}} active{{/if}}"
+               data-theme-id="{{theme.id}}" data-action="pickTheme"
+               role="button" tabindex="0">
+            <div class="shopkeeper-theme-meta">
+              <span class="shopkeeper-theme-check">
+                <i class="fa-solid {{#if theme.active}}fa-circle-check{{else}}fa-circle{{/if}}"></i>
+              </span>
+              <span class="shopkeeper-theme-label">{{theme.label}}</span>
+              {{#if theme.usesAccent}}
+                <span class="shopkeeper-theme-tag" title="{{localize 'SHOPKEEPER.Themes.UsesAccentHint'}}">
+                  <i class="fa-solid fa-droplet"></i> {{localize "SHOPKEEPER.Themes.UsesAccent"}}
+                </span>
+              {{/if}}
+              {{#if theme.animated}}
+                <span class="shopkeeper-theme-tag" title="{{localize 'SHOPKEEPER.Themes.AnimatedHint'}}">
+                  <i class="fa-solid fa-wind"></i> {{localize "SHOPKEEPER.Themes.Animated"}}
+                </span>
+              {{/if}}
+              <span class="shopkeeper-theme-hint">{{theme.hint}}</span>
+            </div>
+
+            <div class="shopkeeper-theme-preview sk-theme-{{theme.id}}">
+              <div class="sk-row"
+                   data-shop-img="{{theme.sampleImg}}"
+                   data-shop-accent="{{theme.sampleAccent}}">
+                <div class="sk-art"><img src="{{theme.sampleImg}}" alt=""></div>
+                <div class="sk-text">
+                  <div class="sk-name">{{theme.sampleName}}</div>
+                  <div class="sk-desc">{{theme.sampleDesc}}</div>
+                </div>
+                <div class="sk-sigil" aria-hidden="true">{{theme.sampleSigil}}</div>
+                <div class="sk-stamp" aria-hidden="true"></div>
+                <div class="sk-chev" aria-hidden="true">&#10095;</div>
+              </div>
+            </div>
+          </div>
+        {{/each}}
+      </div>
+
+    {{else if draft}}
+      {{!-- ============ SHOP EDITOR ============ --}}
+      <div class="shopkeeper-edit-form">
+        <div class="shopkeeper-edit-top-row">
+          <div class="shopkeeper-edit-image-block">
+            <img class="shopkeeper-edit-image-preview" src="{{draft.img}}" alt="">
+            <button type="button" data-action="browseImage">{{localize "SHOPKEEPER.Edit.ShopImage"}}</button>
+          </div>
+          <div class="shopkeeper-edit-fields">
+            <label>
+              {{localize "SHOPKEEPER.Edit.ShopName"}}
+              <input type="text" name="shop-name" value="{{draft.name}}">
+            </label>
+            <div class="shopkeeper-edit-inline-row">
+              <label class="shopkeeper-visible-toggle">
+                <input type="checkbox" name="shop-visible" {{#if draft.visible}}checked{{/if}}>
+                {{localize "SHOPKEEPER.Edit.Visible"}}
+              </label>
+              <label class="shopkeeper-accent-field">
+                {{localize "SHOPKEEPER.Edit.Accent"}}
+                <input type="color" name="shop-accent" value="{{draft.accent}}">
+                <span class="shopkeeper-accent-note">{{localize "SHOPKEEPER.Edit.AccentNote"}}</span>
+              </label>
+            </div>
+            <label>
+              {{localize "SHOPKEEPER.Edit.ShopDescription"}}
+              <textarea name="shop-description" rows="3">{{draft.description}}</textarea>
+            </label>
+          </div>
+        </div>
+
+        <h3>{{localize "SHOPKEEPER.Edit.Inventory"}}</h3>
+        <div class="shopkeeper-dropzone">
+          <i class="fa-solid fa-hand-pointer"></i> {{localize "SHOPKEEPER.Edit.DropHint"}}
+        </div>
+
+        {{#if hasInventory}}
+          <table class="shopkeeper-edit-inventory-table">
+            <thead>
+              <tr>
+                <th class="col-item">{{localize "SHOPKEEPER.Shop.ColumnItem"}}</th>
+                <th class="col-price">{{localize "SHOPKEEPER.Edit.Price"}}</th>
+                <th class="col-qty">{{localize "SHOPKEEPER.Edit.Quantity"}}</th>
+                <th class="col-unlimited" title="{{localize 'SHOPKEEPER.Edit.UnlimitedHint'}}">&infin;</th>
+                <th class="col-remove"></th>
+              </tr>
+            </thead>
+            <tbody class="shopkeeper-edit-inventory-list">
+              {{#each draft.inventory as |entry|}}
+                <tr class="shopkeeper-edit-inventory-row" data-entry-id="{{entry.id}}">
+                  <td class="shopkeeper-item-name">
+                    <img class="shopkeeper-item-icon" src="{{entry.img}}" alt="">
+                    <span>{{entry.name}}</span>
+                  </td>
+                  <td class="col-price">
+                    <input type="number" min="0" step="0.01" data-price-input value="{{entry.price}}">
+                  </td>
+                  <td class="col-qty">
+                    <input type="number" min="0" step="1" data-qty-input value="{{entry.quantity}}" {{#if (lt entry.quantity 0)}}disabled{{/if}}>
+                  </td>
+                  <td class="col-unlimited">
+                    <input type="checkbox" data-unlimited-input {{#if (lt entry.quantity 0)}}checked{{/if}}>
+                  </td>
+                  <td class="col-remove">
+                    <button type="button" data-action="removeItem" title="{{localize 'SHOPKEEPER.Edit.RemoveItem'}}">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        {{/if}}
+
+        <div class="shopkeeper-edit-save-row">
+          <button type="button" class="shopkeeper-save-btn" data-action="save">
+            <i class="fa-solid fa-floppy-disk"></i> {{localize "SHOPKEEPER.Edit.Save"}}
+          </button>
+        </div>
+      </div>
+
+    {{else}}
+      <p class="shopkeeper-empty">{{localize "SHOPKEEPER.Edit.SelectShopHint"}}</p>
+    {{/if}}
+
+  </div>
+</div>
