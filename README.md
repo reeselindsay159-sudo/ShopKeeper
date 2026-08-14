@@ -13,6 +13,15 @@ An in-game shop interface module for Foundry VTT (v13+) and the dnd5e system.
 - **Edit Shops (GM)** — create/delete shops, toggle whether a shop is visible to players, set its image/name/description/accent colour, and drag & drop items from the sidebar, a compendium, or an actor sheet straight into its inventory. Each inventory row has an editable price (gp) and quantity, plus an "unlimited stock" checkbox.
 - **Market themes** — nine visual styles for the Market's shop rows, picked by the GM under **Edit Shops → Market Theme**. The picker previews each theme using your own shop art, and the choice applies to everyone in the world.
 - **Inventory tools** — populate a shop by rolling on any rollable table, auto-generate prices for magic items by rarity, and clear a shop's stock in one click.
+- **Image framing** — zoom and pan each shop's artwork, framed separately for the shop page and the Market banner.
+
+## Image framing
+
+The shop page shows a tall square image while the Market shows a wide banner, so one crop rarely suits both. **Edit Shops → Image Framing** gives each shop two independent framings of the same source image.
+
+Drag inside a preview to pan, scroll over it or use the slider to zoom (1x–4x), and press the reset arrow to return to fit. Panning is only possible once zoomed in, and pan is clamped so the image can never be dragged past its own edge — if you zoom back out, any existing pan is pulled back in with it, so a frame can never show empty space.
+
+Framing is stored per shop and applies for every player. Shops made before this version default to 1x with no pan, which is exactly how they looked previously.
 
 ## Inventory tools
 

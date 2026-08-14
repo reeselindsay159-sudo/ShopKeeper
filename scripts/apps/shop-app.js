@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.js";
 import { getShop } from "../shop-data.js";
+import { applyFramingVars } from "../framing.js";
 import { requestPurchase } from "../socket.js";
 import { currencyToCopper, copperToGp } from "../currency.js";
 
@@ -38,6 +39,13 @@ export class ShopApp extends HandlebarsApplicationMixin(ApplicationV2) {
       scrollable: [".shopkeeper-inventory-list"]
     }
   };
+
+  /** Apply the GM's zoom/pan framing to the shop portrait. @override */
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    const portrait = this.element.querySelector("[data-shop-framing]");
+    if (portrait) applyFramingVars(portrait, this._shop?.framing?.shop, "sk-s");
+  }
 
   get title() {
     return this._shop?.name || "Shop";

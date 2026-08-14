@@ -69,13 +69,29 @@
   z-index: 3;
 }
 
-.sk-art img {
+.sk-thumb {
   display: block;
+  position: relative;
   width: 76px;
   height: 76px;
-  object-fit: cover;
+  overflow: hidden;
   border: none;
   border-radius: 0;
+}
+
+/* The image fills its clip box, then zoom/pan is applied on top. Because the
+   transform list resolves right-to-left, the translate percentages are relative
+   to the untransformed box — i.e. to the frame — which is what makes the pan
+   limits in framing.js exact. */
+.sk-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
+  border-radius: inherit;
+  transform: translate(var(--sk-bx, 0%), var(--sk-by, 0%)) scale(var(--sk-bz, 1));
+  transform-origin: center center;
 }
 
 .sk-text {
@@ -100,6 +116,43 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* Full-bleed background layer. Hidden by default; themes that bleed the shop
+   art across the whole row switch it on. Keeping the image on its own element
+   (rather than as a background on .sk-row) is what allows zoom/pan to apply to
+   it, since a transform can scale an element but not a background layer. */
+.sk-bg {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The artwork. Only this layer is transformed, so zoom/pan never drags the
+   edge treatment around with it. */
+.sk-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--img);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translate(var(--sk-bx, 0%), var(--sk-by, 0%)) scale(var(--sk-bz, 1));
+  transform-origin: center center;
+}
+
+/* Edge treatment / scrim, painted over the artwork and deliberately NOT
+   transformed. Implemented as a gradient in the row's own base colour rather
+   than a CSS mask: a mask lives in the element's local coordinate space, so it
+   would scale with the zoom and its fade would slide off-row at high zoom. */
+.sk-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 
 /* Theme-specific ornaments, hidden unless a theme opts in. */
@@ -127,11 +180,16 @@
   padding: 18px 22px;
   border: 1px solid rgba(255, 255, 255, .09);
   color: #fff;
-  background-image: var(--img), var(--img);
-  background-size: auto 210%, cover;
-  background-position: 82% 45%, center 42%;
-  background-repeat: no-repeat, no-repeat;
   background-color: #0d0b12;
+}
+
+.sk-theme-cinematic .sk-bg { display: block; }
+
+.sk-theme-cinematic .sk-bg::before { transition: transform .25s ease; }
+
+/* Deepen the art toward the text side so the row scrim has less work to do. */
+.sk-theme-cinematic .sk-bg::after {
+  background: linear-gradient(100deg, rgba(13,11,18,.92) 4%, rgba(13,11,18,.45) 30%, transparent 62%);
 }
 
 .sk-theme-cinematic .sk-row::before {
@@ -155,7 +213,7 @@
   transition: opacity .25s ease;
 }
 
-.sk-theme-cinematic .sk-art img {
+.sk-theme-cinematic .sk-thumb {
   width: 88px;
   height: 88px;
   border-radius: 8px;
@@ -174,9 +232,11 @@
   text-shadow: 0 1px 8px rgba(0, 0, 0, .9);
 }
 
-.sk-theme-cinematic .sk-row:hover {
-  transform: scale(1.008);
-  background-size: auto 232%, 112%;
+.sk-theme-cinematic .sk-row:hover { transform: scale(1.008); }
+
+/* Slow push-in on hover, composed with the GM's own zoom. */
+.sk-theme-cinematic .sk-row:hover .sk-bg::before {
+  transform: translate(var(--sk-bx, 0%), var(--sk-by, 0%)) scale(calc(var(--sk-bz, 1) * 1.06));
 }
 
 .sk-theme-cinematic .sk-row:hover::before {
@@ -208,7 +268,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, .4);
 }
 
-.sk-theme-tome .sk-art img {
+.sk-theme-tome .sk-thumb {
   width: 74px;
   height: 82px;
   border-radius: 50% 50% 6px 6px;
@@ -278,7 +338,7 @@
 .sk-theme-sign .sk-row::before { left: 9px; }
 .sk-theme-sign .sk-row::after { right: 9px; }
 
-.sk-theme-sign .sk-art img {
+.sk-theme-sign .sk-thumb {
   width: 78px;
   height: 78px;
   border-radius: 4px;
@@ -325,7 +385,7 @@
   transition: opacity .3s ease;
 }
 
-.sk-theme-arcane .sk-art img {
+.sk-theme-arcane .sk-thumb {
   position: relative;
   width: 74px;
   height: 74px;
@@ -377,7 +437,7 @@
   color: #eef2ec;
 }
 
-.sk-theme-chalk .sk-art img {
+.sk-theme-chalk .sk-thumb {
   width: 74px;
   height: 74px;
   border-radius: 3px;
@@ -442,7 +502,7 @@
   box-shadow: 0 3px 9px rgba(0, 0, 0, .5);
 }
 
-.sk-theme-banner .sk-art img {
+.sk-theme-banner .sk-thumb {
   width: 70px;
   height: 78px;
   border-radius: 4px 4px 46% 46%;
@@ -515,7 +575,7 @@
   box-shadow: 0 0 0 2px rgba(200, 210, 230, .28);
 }
 
-.sk-theme-glass .sk-art img {
+.sk-theme-glass .sk-thumb {
   width: 72px;
   height: 80px;
   border-radius: 50% 50% 4px 4px;
@@ -549,15 +609,35 @@
   min-height: 118px;
   padding: 15px 20px;
   background-color: #0f0716;
-  background-image:
-    linear-gradient(100deg, rgba(15,7,22,.92) 22%, rgba(26,12,38,.68) 50%, rgba(44,18,64,.34) 100%),
-    var(--img);
-  background-size: auto, auto 200%;
-  background-position: center, 78% 45%;
-  background-repeat: no-repeat, no-repeat;
   border: 1px solid rgba(198, 97, 255, .26);
   box-shadow: 0 4px 16px rgba(0, 0, 0, .6);
   color: #fdf6ff;
+}
+
+/* The banner art is masked on two axes so it dissolves into the mist instead
+   of ending on a hard edge: horizontally it fades out toward the text on the
+   left and softens again at the right rim, and vertically it feathers into the
+   row's top and bottom edges. */
+.sk-theme-haze .sk-bg { display: block; }
+
+/* The requested gradient fade. The banner art dissolves into the mist on every
+   edge instead of stopping on a hard line: it is buried behind the base colour
+   on the left where the text sits, opens up through the middle, and feathers
+   back out at the right rim and along the top and bottom. */
+.sk-theme-haze .sk-bg::after {
+  background:
+    linear-gradient(100deg,
+      #0f0716 3%,
+      rgba(15,7,22,.94) 22%,
+      rgba(26,12,38,.66) 46%,
+      rgba(32,14,48,.34) 68%,
+      rgba(24,11,36,.70) 90%,
+      #0f0716 100%),
+    linear-gradient(180deg,
+      rgba(15,7,22,.92) 0%,
+      rgba(15,7,22,.10) 22%,
+      rgba(15,7,22,.10) 78%,
+      rgba(15,7,22,.92) 100%);
 }
 
 .sk-theme-haze .sk-row::before,
@@ -591,7 +671,7 @@
     radial-gradient(ellipse 220px 58px at 14% 58%, rgba(226,168,255,.32), transparent 68%);
 }
 
-.sk-theme-haze .sk-art img {
+.sk-theme-haze .sk-thumb {
   width: 74px;
   height: 74px;
   border-radius: 7px;
@@ -614,9 +694,22 @@
 .sk-theme-haze .sk-row:hover {
   border-color: rgba(214, 132, 255, .55);
   box-shadow: 0 6px 30px rgba(160, 70, 225, .38);
-  background-image:
-    linear-gradient(100deg, rgba(15,7,22,.84) 16%, rgba(26,12,38,.48) 48%, rgba(44,18,64,.12) 100%),
-    var(--img);
+}
+
+.sk-theme-haze .sk-row:hover .sk-bg::after {
+  background:
+    linear-gradient(100deg,
+      #0f0716 2%,
+      rgba(15,7,22,.86) 20%,
+      rgba(26,12,38,.52) 44%,
+      rgba(32,14,48,.20) 68%,
+      rgba(24,11,36,.58) 90%,
+      #0f0716 100%),
+    linear-gradient(180deg,
+      rgba(15,7,22,.86) 0%,
+      rgba(15,7,22,.06) 22%,
+      rgba(15,7,22,.06) 78%,
+      rgba(15,7,22,.86) 100%);
 }
 
 .sk-theme-haze .sk-row:hover::before,
@@ -651,7 +744,7 @@
 .sk-theme-crate .sk-row::before { left: 104px; }
 .sk-theme-crate .sk-row::after { right: 22px; }
 
-.sk-theme-crate .sk-art img {
+.sk-theme-crate .sk-thumb {
   width: 72px;
   height: 72px;
   border-radius: 2px;
@@ -733,12 +826,23 @@
   gap: 0.5em;
 }
 
-.shopkeeper-shop-image img {
+.shopkeeper-shop-portrait {
+  position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
+  overflow: hidden;
   border-radius: 8px;
   border: 1px solid var(--sk-border);
+}
+
+.shopkeeper-shop-portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
+  transform: translate(var(--sk-sx, 0%), var(--sk-sy, 0%)) scale(var(--sk-sz, 1));
+  transform-origin: center center;
 }
 
 .shopkeeper-shop-desc {
@@ -1283,7 +1387,7 @@
   min-height: 92px;
 }
 
-.shopkeeper-theme-preview .sk-art img {
+.shopkeeper-theme-preview .sk-thumb {
   width: 62px;
   height: 62px;
 }
@@ -1455,3 +1559,137 @@
 .shopkeeper-edit-save-row.is-dirty .shopkeeper-save-btn {
   box-shadow: 0 0 0 2px rgba(184, 134, 11, .55);
 }
+
+/* =========================================================================
+   Image framing editor (zoom / pan)
+   ========================================================================= */
+
+.shopkeeper-framing {
+  border: 1px solid var(--sk-border);
+  border-radius: 8px;
+  background: rgba(127, 127, 127, .06);
+}
+
+.shopkeeper-framing > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: revert;
+}
+
+.shopkeeper-framing-hint {
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--sk-muted);
+}
+
+.shopkeeper-framing-body {
+  display: flex;
+  gap: 18px;
+  padding: 4px 12px 14px;
+  flex-wrap: wrap;
+}
+
+.shopkeeper-framing-pane {
+  flex: 1 1 240px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shopkeeper-framing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shopkeeper-framing-label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--sk-muted);
+}
+
+.shopkeeper-framing-reset {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--sk-border);
+  border-radius: 5px;
+  padding: 0.15em 0.5em;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.shopkeeper-framing-reset:hover { background: var(--sk-bg-row-hover); }
+
+/* ---- the draggable preview surface ---- */
+
+.shopkeeper-frame-box {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--sk-border);
+  background: #14151a;
+  touch-action: none;          /* let us own the drag gesture */
+  user-select: none;
+}
+
+.shopkeeper-frame-square { aspect-ratio: 1 / 1; }
+.shopkeeper-frame-wide { aspect-ratio: 16 / 5; }
+
+.shopkeeper-frame-box img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
+  pointer-events: none;
+  transform: translate(var(--sk-fx, 0%), var(--sk-fy, 0%)) scale(var(--sk-fz, 1));
+  transform-origin: center center;
+}
+
+.shopkeeper-frame-box.is-zoomed { cursor: grab; }
+.shopkeeper-frame-box.is-panning { cursor: grabbing; }
+
+.shopkeeper-frame-grip {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  color: #fff;
+  background: rgba(0, 0, 0, .55);
+  opacity: 0;
+  transition: opacity .15s ease;
+  pointer-events: none;
+}
+
+.shopkeeper-frame-box.is-zoomed:hover .shopkeeper-frame-grip { opacity: 1; }
+
+.shopkeeper-framing-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8em;
+  color: var(--sk-muted);
+}
+
+.shopkeeper-framing-controls input[type="range"] {
+  flex: 1;
+  min-width: 60px;
+}
+
+.shopkeeper-framing-zoom {
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The shop-image block reuses the same surface, so it needs the same vars. */
+.shopkeeper-edit-image-block .shopkeeper-frame-box { margin-bottom: 4px; }

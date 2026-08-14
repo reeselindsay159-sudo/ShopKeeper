@@ -60,7 +60,8 @@ export class MarketApp extends HandlebarsApplicationMixin(ApplicationV2) {
    */
   _onRender(context, options) {
     super._onRender?.(context, options);
-    applyRowVars(this.element);
+    const framings = Object.fromEntries((context.shops ?? []).map(s => [s.id, s.framing]));
+    applyRowVars(this.element, framings);
   }
 
   static #onOpenShop(_event, target) {

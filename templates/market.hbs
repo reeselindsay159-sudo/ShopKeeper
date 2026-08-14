@@ -9,7 +9,8 @@
              data-action="openShop"
              role="button" tabindex="0"
              aria-label="{{shop.name}}">
-          <div class="sk-art"><img src="{{shop.img}}" alt=""></div>
+          <div class="sk-bg" aria-hidden="true"></div>
+          <div class="sk-art"><span class="sk-thumb"><img src="{{shop.img}}" alt=""></span></div>
           <div class="sk-text">
             <div class="sk-name">
               {{shop.name}}{{#if ../isGM}}{{#unless shop.visible}} <i class="fa-solid fa-eye-slash sk-hidden-icon" title="{{localize 'SHOPKEEPER.Market.HiddenFromPlayers'}}"></i>{{/unless}}{{/if}}
