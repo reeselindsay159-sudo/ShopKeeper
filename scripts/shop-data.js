@@ -1,4 +1,5 @@
 import { MODULE_ID, SETTINGS, MARKET_THEMES, DEFAULT_THEME, DEFAULT_ACCENT } from "./constants.js";
+import { normalizeFramingSet, defaultFramingSet } from "./framing.js";
 
 /**
  * Register the world-scoped settings that store shops and the market theme.
@@ -51,6 +52,7 @@ function normalizeShop(shop) {
   shop.accent ??= DEFAULT_ACCENT;
   shop.description ??= "";
   shop.inventory ??= [];
+  shop.framing = normalizeFramingSet(shop.framing);
   return shop;
 }
 
@@ -95,6 +97,7 @@ export async function createShop(data = {}) {
     description: data.description?.trim() || "",
     img: data.img || "icons/svg/shop.svg",
     accent: data.accent || DEFAULT_ACCENT,
+    framing: defaultFramingSet(),
     visible: false,
     inventory: []
   });

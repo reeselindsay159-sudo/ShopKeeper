@@ -62,8 +62,10 @@
             <div class="shopkeeper-theme-preview sk-theme-{{theme.id}}">
               <div class="sk-row"
                    data-shop-img="{{theme.sampleImg}}"
-                   data-shop-accent="{{theme.sampleAccent}}">
-                <div class="sk-art"><img src="{{theme.sampleImg}}" alt=""></div>
+                   data-shop-accent="{{theme.sampleAccent}}"
+                   data-shop-framing="{{theme.sampleFraming}}">
+                <div class="sk-bg" aria-hidden="true"></div>
+                <div class="sk-art"><span class="sk-thumb"><img src="{{theme.sampleImg}}" alt=""></span></div>
                 <div class="sk-text">
                   <div class="sk-name">{{theme.sampleName}}</div>
                   <div class="sk-desc">{{theme.sampleDesc}}</div>
@@ -82,7 +84,9 @@
       <div class="shopkeeper-edit-form">
         <div class="shopkeeper-edit-top-row">
           <div class="shopkeeper-edit-image-block">
-            <img class="shopkeeper-edit-image-preview" src="{{draft.img}}" alt="">
+            <div class="shopkeeper-frame-box shopkeeper-frame-square" data-frame="shop">
+              <img src="{{draft.img}}" alt="">
+            </div>
             <button type="button" data-action="browseImage">{{localize "SHOPKEEPER.Edit.ShopImage"}}</button>
           </div>
           <div class="shopkeeper-edit-fields">
@@ -107,6 +111,43 @@
             </label>
           </div>
         </div>
+
+        {{!-- ============ IMAGE FRAMING ============ --}}
+        <details class="shopkeeper-framing" data-sync="shopkeeper-framing" {{#if framingOpen}}open{{/if}}>
+          <summary>
+            <i class="fa-solid fa-crop-simple"></i> {{localize "SHOPKEEPER.Framing.Heading"}}
+            <span class="shopkeeper-framing-hint">{{localize "SHOPKEEPER.Framing.Hint"}}</span>
+          </summary>
+
+          <div class="shopkeeper-framing-body">
+            {{#each frames as |frame|}}
+              <div class="shopkeeper-framing-pane" data-frame-pane="{{frame.key}}">
+                <div class="shopkeeper-framing-head">
+                  <span class="shopkeeper-framing-label">{{frame.label}}</span>
+                  <button type="button" class="shopkeeper-framing-reset"
+                          data-action="resetFraming" data-frame="{{frame.key}}"
+                          title="{{localize 'SHOPKEEPER.Framing.Reset'}}">
+                    <i class="fa-solid fa-rotate-left"></i>
+                  </button>
+                </div>
+
+                <div class="shopkeeper-frame-box {{frame.shapeClass}}" data-frame="{{frame.key}}">
+                  <img src="{{../draft.img}}" alt="">
+                  <span class="shopkeeper-frame-grip"><i class="fa-solid fa-up-down-left-right"></i></span>
+                </div>
+
+                <div class="shopkeeper-framing-controls">
+                  <i class="fa-solid fa-magnifying-glass-minus"></i>
+                  <input type="range" data-zoom-slider data-frame="{{frame.key}}"
+                         min="{{../zoomMin}}" max="{{../zoomMax}}" step="{{../zoomStep}}"
+                         value="{{frame.zoom}}">
+                  <i class="fa-solid fa-magnifying-glass-plus"></i>
+                  <span class="shopkeeper-framing-zoom" data-zoom-readout="{{frame.key}}">{{frame.zoomLabel}}</span>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        </details>
 
         <h3>{{localize "SHOPKEEPER.Edit.Inventory"}}</h3>
 

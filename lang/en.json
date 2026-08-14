@@ -65,6 +65,13 @@
       "PurchaseFailedTitle": "Purchase Failed",
       "PurchaseTimeout": "<p>The purchase request timed out. Please try again.</p>"
     },
+    "Framing": {
+      "Heading": "Image Framing",
+      "Hint": "Drag to pan, scroll or use the slider to zoom",
+      "ShopImage": "Shop page",
+      "Banner": "Market banner",
+      "Reset": "Reset to fit"
+    },
     "Tools": {
       "FromTable": "Roll from table",
       "Load": "Load",

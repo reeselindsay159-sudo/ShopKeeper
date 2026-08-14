@@ -1,7 +1,9 @@
 <div class="shopkeeper-shop">
   <div class="shopkeeper-shop-main">
     <div class="shopkeeper-shop-image">
-      <img src="{{shop.img}}" alt="{{shop.name}}">
+      <div class="shopkeeper-shop-portrait" data-shop-framing>
+        <img src="{{shop.img}}" alt="{{shop.name}}">
+      </div>
       {{#if shop.description}}<p class="shopkeeper-shop-desc">{{shop.description}}</p>{{/if}}
     </div>
 

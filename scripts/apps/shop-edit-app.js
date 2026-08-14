@@ -6,6 +6,10 @@ import {
 import { applyRowVars } from "../theme.js";
 import { getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntry } from "../tables.js";
 import { generateMissingPrices, getRarity } from "../pricing.js";
+import {
+  makeFramer, applyFramingVars, clampFraming, defaultFraming, normalizeFramingSet,
+  ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
+} from "../framing.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -54,6 +58,9 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     /** Remembered table-load settings, so they survive a re-render. */
     this._tableId = null;
     this._tableCount = 5;
+    /** Live framing controllers, torn down and rebuilt on each render. */
+    this._framers = [];
+    this._framingOpen = false;
   }
 
   static DEFAULT_OPTIONS = {
@@ -78,7 +85,8 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       pickTheme: ShopEditApp.#onPickTheme,
       loadFromTable: ShopEditApp.#onLoadFromTable,
       generatePrices: ShopEditApp.#onGeneratePrices,
-      clearShop: ShopEditApp.#onClearShop
+      clearShop: ShopEditApp.#onClearShop,
+      resetFraming: ShopEditApp.#onResetFraming
     }
   };
 
@@ -124,7 +132,9 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       sampleDesc: sample?.description || game.i18n.localize("SHOPKEEPER.Themes.SampleDesc"),
       sampleImg: sample?.img ?? "icons/svg/shop.svg",
       sampleAccent: sample?.accent ?? DEFAULT_ACCENT,
-      sampleSigil: (sample?.name?.trim()?.[0] ?? "S").toUpperCase()
+      sampleSigil: (sample?.name?.trim()?.[0] ?? "S").toUpperCase(),
+      // So the gallery previews the shop's actual banner crop, not the raw image.
+      sampleFraming: JSON.stringify(clampFraming(sample?.framing?.banner))
     }));
 
     // Decorate inventory rows for display: rarity badge, and a flag for rows
@@ -155,8 +165,36 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       dirty: this._dirty,
       tables: worldTables.map(t => ({ ...t, selected: t.id === this._tableId })),
       hasTables: worldTables.length > 0,
-      tableCount: this._tableCount
+      tableCount: this._tableCount,
+      frames: this._frameContext(),
+      framingOpen: this._framingOpen,
+      zoomMin: ZOOM_MIN,
+      zoomMax: ZOOM_MAX,
+      zoomStep: ZOOM_STEP
     };
+  }
+
+  /** Build the two framing panes (shop portrait and market banner). */
+  _frameContext() {
+    if (!this._draft) return [];
+    const framing = normalizeFramingSet(this._draft.framing);
+    this._draft.framing = framing;
+    return [
+      {
+        key: "shop",
+        label: game.i18n.localize("SHOPKEEPER.Framing.ShopImage"),
+        shapeClass: "shopkeeper-frame-square",
+        zoom: framing.shop.zoom,
+        zoomLabel: `${framing.shop.zoom.toFixed(2)}x`
+      },
+      {
+        key: "banner",
+        label: game.i18n.localize("SHOPKEEPER.Framing.Banner"),
+        shapeClass: "shopkeeper-frame-wide",
+        zoom: framing.banner.zoom,
+        zoomLabel: `${framing.banner.zoom.toFixed(2)}x`
+      }
+    ];
   }
 
   /** @override */
@@ -198,7 +236,64 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     }
 
+    this._setupFraming();
     applyRowVars(this.element);
+  }
+
+  /* -------------------------------------------- */
+  /*  Image framing                               */
+  /* -------------------------------------------- */
+
+  /**
+   * Wire up the drag-to-pan / scroll-to-zoom preview boxes.
+   * Rebuilt on every render, so old controllers must be torn down first or we
+   * would leak a listener set per render.
+   */
+  _setupFraming() {
+    for (const framer of this._framers) framer.destroy();
+    this._framers = [];
+    if (!this._draft) return;
+
+    const details = this.element.querySelector(".shopkeeper-framing");
+    if (details) {
+      details.addEventListener("toggle", () => { this._framingOpen = details.open; });
+    }
+
+    for (const box of this.element.querySelectorAll(".shopkeeper-frame-box[data-frame]")) {
+      const key = box.dataset.frame;
+      const initial = this._draft.framing?.[key] ?? defaultFraming();
+
+      // Paint the starting state immediately.
+      applyFramingVars(box, initial, "sk-f");
+      box.classList.toggle("is-zoomed", initial.zoom > ZOOM_MIN);
+
+      const slider = this.element.querySelector(`[data-zoom-slider][data-frame="${key}"]`);
+      const readout = this.element.querySelector(`[data-zoom-readout="${key}"]`);
+
+      const framer = makeFramer(box, initial, framing => {
+        this._draft.framing[key] = framing;
+        applyFramingVars(box, framing, "sk-f");
+        box.classList.toggle("is-zoomed", framing.zoom > ZOOM_MIN);
+        if (slider && Number(slider.value) !== framing.zoom) slider.value = String(framing.zoom);
+        if (readout) readout.textContent = `${framing.zoom.toFixed(2)}x`;
+        this._markDirty();
+      });
+
+      if (slider) {
+        slider.addEventListener("input", event => {
+          framer.set({ ...framer.get(), zoom: Number(event.target.value) });
+        });
+      }
+
+      this._framers.push(framer);
+    }
+  }
+
+  /** @override */
+  _onClose(options) {
+    for (const framer of this._framers) framer.destroy();
+    this._framers = [];
+    return super._onClose?.(options);
   }
 
   /** Flag unsaved changes and refresh just the Save button's state. */
@@ -332,6 +427,15 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /* -------------------------------------------- */
   /*  Actions                                     */
   /* -------------------------------------------- */
+
+  static #onResetFraming(event, target) {
+    event.stopPropagation();
+    const key = target.dataset.frame;
+    if (!key || !this._draft) return;
+    this._draft.framing[key] = defaultFraming();
+    this._markDirty();
+    this.render();
+  }
 
   static async #onLoadFromTable(_event, _target) {
     if (!this._draft) return;
@@ -520,6 +624,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       description: this._draft.description ?? "",
       img: this._draft.img || "icons/svg/shop.svg",
       accent: this._draft.accent || DEFAULT_ACCENT,
+      framing: normalizeFramingSet(this._draft.framing),
       visible: !!this._draft.visible
     });
     await setShopInventory(this.selectedShopId, this._draft.inventory);
