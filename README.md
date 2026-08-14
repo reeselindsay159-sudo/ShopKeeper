@@ -22,9 +22,13 @@ An in-game shop interface module for Foundry VTT (v13+) and the dnd5e system.
 - **Shop image** — the square crop. Used by *both* the shop page portrait and the shop thumbnail in the Market row, since they are the same picture in the same shape. Editing it moves both.
 - **Market banner** — the wide crop. Used only by themes that stretch the artwork across the whole row (Cinematic, Purple Haze).
 
+The banner can also use a **completely different image** from the shop. In the Market banner pane, choose *Use a different image* to pick one, or clear it to fall back to the shop image. This is the better option when your shop art is a portrait or icon that will never crop well into a wide strip.
+
 Drag inside a preview to pan, scroll over it or use the slider to zoom (1x–4x), and press the reset arrow to return to fit.
 
-Pan limits are derived from the real rendered size, not from zoom alone. Images are laid out with `cover`, so a square image dropped into a wide banner is already scaled to the frame's width and stands several times taller than the frame — even at 1x. The limits account for that, so the entire image is reachable by panning, while stopping exactly at each edge so empty space is never exposed. If you zoom back out, any existing pan is pulled in with it.
+The whole image is reachable. Images are laid out to cover the frame, so a square image in a wide banner already extends far above and below it even at 1x — panning brings that hidden part into view, and stops exactly when the image's edge meets the frame's, so empty space is never exposed.
+
+Pan is stored as a fraction of the available travel rather than in pixels or percent-of-frame, so a crop looks the same on a player's screen as it did in the editor, whatever size their window is.
 
 Framing is stored per shop and applies for every player. Shops made before this version default to 1x with no pan, which is exactly how they looked previously.
 

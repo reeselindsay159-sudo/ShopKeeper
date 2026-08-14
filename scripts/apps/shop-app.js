@@ -1,6 +1,6 @@
 import { MODULE_ID } from "../constants.js";
 import { getShop } from "../shop-data.js";
-import { applyFramedImage } from "../framing.js";
+import { attachFramedImage } from "../framing.js";
 import { requestPurchase } from "../socket.js";
 import { currencyToCopper, copperToGp } from "../currency.js";
 
@@ -41,16 +41,24 @@ export class ShopApp extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   /** Apply the GM's zoom/pan framing to the shop portrait. @override */
-  _onRender(context, options) {
+  async _onRender(context, options) {
     super._onRender?.(context, options);
+    this._framingHandle?.destroy();
     const portrait = this.element.querySelector("[data-shop-framing]");
     if (portrait && this._shop) {
-      applyFramedImage(portrait, {
+      this._framingHandle = await attachFramedImage(portrait, {
         src: this._shop.img,
         framing: this._shop.framing?.shop,
         prefix: "sk-s"
       });
     }
+  }
+
+  /** @override */
+  _onClose(options) {
+    this._framingHandle?.destroy();
+    this._framingHandle = null;
+    return super._onClose?.(options);
   }
 
   get title() {

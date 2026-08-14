@@ -52,8 +52,15 @@ function normalizeShop(shop) {
   shop.accent ??= DEFAULT_ACCENT;
   shop.description ??= "";
   shop.inventory ??= [];
+  // "" means "use the shop image for the banner too".
+  shop.bannerImg ??= "";
   shop.framing = normalizeFramingSet(shop.framing);
   return shop;
+}
+
+/** The image the Market banner should use for a shop. */
+export function bannerImageFor(shop) {
+  return shop?.bannerImg || shop?.img || "";
 }
 
 /** @returns {Record<string, object>} the raw shops map, keyed by shop id */
@@ -97,6 +104,7 @@ export async function createShop(data = {}) {
     description: data.description?.trim() || "",
     img: data.img || "icons/svg/shop.svg",
     accent: data.accent || DEFAULT_ACCENT,
+    bannerImg: data.bannerImg || "",
     framing: defaultFramingSet(),
     visible: false,
     inventory: []

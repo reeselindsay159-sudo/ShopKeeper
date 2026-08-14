@@ -58,10 +58,18 @@ export class MarketApp extends HandlebarsApplicationMixin(ApplicationV2) {
    * quotes or spaces can't break out of the inline style attribute.
    * @override
    */
-  _onRender(context, options) {
+  async _onRender(context, options) {
     super._onRender?.(context, options);
-    const framings = Object.fromEntries((context.shops ?? []).map(s => [s.id, s.framing]));
-    applyRowVars(this.element, framings);
+    this._framingHandle?.destroy();
+    const shops = Object.fromEntries((context.shops ?? []).map(s => [s.id, s]));
+    this._framingHandle = await applyRowVars(this.element, shops);
+  }
+
+  /** @override */
+  _onClose(options) {
+    this._framingHandle?.destroy();
+    this._framingHandle = null;
+    return super._onClose?.(options);
   }
 
   static #onOpenShop(_event, target) {

@@ -1,38 +1,43 @@
 /**
  * Per-shop image framing: zoom and pan.
  *
- * A shop stores two independent framings of the same source image:
+ * A shop stores two independent framings:
  *   - `shop`   the square crop, used by BOTH the shop page portrait and the
- *              shop thumbnail in the Market row (they are the same picture in
- *              the same shape, so they share one framing)
- *   - `banner` the wide crop, used only by themes that bleed the artwork across
- *              the whole Market row (Cinematic, Purple Haze)
- *
- * The transform used everywhere is:
- *     transform: translate(x%, y%) scale(zoom)
- *
- * CSS applies a transform list right-to-left, so the scale happens first and
- * the translate is then resolved against the element's *untransformed* box —
- * i.e. against the frame. That makes the pan units easy: x is a percentage of
- * the frame width, y a percentage of the frame height.
+ *              thumbnail in the Market row (same picture, same shape)
+ *   - `banner` the wide crop, used by themes that bleed art across the whole
+ *              row. It may use its own image (`shop.bannerImg`) or fall back to
+ *              the shop image.
  *
  * ---------------------------------------------------------------------------
- * Pan limits are aspect-aware, and this is the subtle part.
+ * HOW THE RENDERING WORKS, AND WHY IT IS NOT THE OBVIOUS THING
  *
- * The image is laid out with `cover`, so at zoom 1 it already overflows the
- * frame on one axis whenever their aspect ratios differ — a square image in a
- * 5:1 banner is scaled to the frame's width and then stands five times taller
- * than the frame. Treating "zoom 1" as "no overflow, no panning" would strand
- * the GM on a fixed middle band of their own artwork, unable to reach the top
- * or bottom of it. So the limits are derived from the real rendered size:
+ * The obvious approach — leave the image at frame size with `object-fit: cover`
+ * and move it with a transform — is broken, and was the cause of "pan up and
+ * the top of the image is missing". `cover` crops the image *to the element's
+ * box*, and a transform is applied to the result of that crop. So translating
+ * does not reveal more picture; it slides the already-cropped strip out of the
+ * frame and leaves empty space behind it.
  *
- *     renderedSize = imageSize * max(frameW/imgW, frameH/imgH) * zoom
- *     overflow     = max(0, rendered - frame)
- *     limit%       = overflow / (2 * frame) * 100
+ * Instead, the image element is sized to the FULL cover-rendered dimensions
+ * (which are larger than the frame on at least one axis), centred on the frame,
+ * and then translated. Now the extra picture genuinely exists inside the
+ * element, so translation moves real content into view and the frame's
+ * `overflow: hidden` does the cropping.
  *
- * That is exactly far enough to bring each edge of the image to the matching
- * edge of the frame, and no further — so the whole picture is reachable and
- * empty space is still impossible.
+ * Sizes are expressed as multiples of the frame:
+ *
+ *     kx = zoom * max(1, imgAspect / frameAspect)   // element width  / frame width
+ *     ky = zoom * max(1, frameAspect / imgAspect)   // element height / frame height
+ *
+ * These depend only on the two aspect ratios, never on pixel size, so they can
+ * be written as CSS percentages and survive the window being resized. The
+ * element's own aspect always works out to the image's aspect, so nothing is
+ * ever stretched.
+ *
+ * Pan is stored NORMALIZED in [-1, 1]: the fraction of the available slack on
+ * that axis. 0 is centred, ±1 brings that edge of the image exactly to the
+ * matching edge of the frame. Storing it this way means a crop still means the
+ * same thing if the row is a different size on someone else's screen.
  * ---------------------------------------------------------------------------
  */
 
@@ -42,78 +47,52 @@ export const ZOOM_STEP = 0.05;
 
 export const FRAME_KEYS = ["shop", "banner"];
 
+/**
+ * Storage format version.
+ * v1 stored pan as a percentage of the frame, under the broken model above.
+ * Those numbers have no meaning in the current model, so v1 data is migrated by
+ * keeping the zoom and resetting the pan to centre.
+ */
+export const FRAMING_VERSION = 2;
+
 /** @returns {{zoom:number,x:number,y:number}} a fresh identity framing */
 export function defaultFraming() {
   return { zoom: 1, x: 0, y: 0 };
 }
 
-/** @returns {{shop:object, banner:object}} a fresh framing set */
+/** @returns {object} a fresh framing set, version-stamped */
 export function defaultFramingSet() {
-  return { shop: defaultFraming(), banner: defaultFraming() };
+  return { v: FRAMING_VERSION, shop: defaultFraming(), banner: defaultFraming() };
 }
 
-/**
- * Coerce arbitrary stored data into a structurally valid framing.
- *
- * This deliberately does NOT clamp pan: the valid pan range depends on the
- * image and frame dimensions, which are not known at the storage layer.
- * Clamping happens in clampToLimits() once those are measured.
- */
+/** Coerce one framing into range. Pan is normalized, so [-1, 1]. */
 export function sanitizeFraming(framing) {
   return {
     zoom: clampNumber(framing?.zoom, ZOOM_MIN, ZOOM_MAX, 1),
-    x: roundNumber(framing?.x, 0),
-    y: roundNumber(framing?.y, 0)
+    x: clampNumber(framing?.x, -1, 1, 0),
+    y: clampNumber(framing?.y, -1, 1, 0)
   };
-}
-
-/** Normalize a whole framing set, filling in anything missing. */
-export function normalizeFramingSet(framing) {
-  const out = {};
-  for (const key of FRAME_KEYS) out[key] = sanitizeFraming(framing?.[key]);
-  return out;
 }
 
 /**
- * How far the image may be panned, in percent of the frame, per axis.
- *
- * @param {object} spec
- * @param {number} spec.frameW  frame width in px
- * @param {number} spec.frameH  frame height in px
- * @param {number} spec.imgW    image natural width in px
- * @param {number} spec.imgH    image natural height in px
- * @param {number} spec.zoom
- * @returns {{x:number, y:number}}
+ * Normalize a whole framing set, migrating pre-v2 data.
+ * @param {any} set
+ * @returns {object}
  */
-export function computePanLimits({ frameW, frameH, imgW, imgH, zoom }) {
-  const z = clampNumber(zoom, ZOOM_MIN, ZOOM_MAX, 1);
+export function normalizeFramingSet(set) {
+  const isCurrent = Number(set?.v) === FRAMING_VERSION;
+  const out = { v: FRAMING_VERSION };
 
-  // Without real measurements, fall back to the aspect-agnostic estimate.
-  if (!(frameW > 0 && frameH > 0 && imgW > 0 && imgH > 0)) {
-    const generic = ((z - 1) / 2) * 100;
-    return { x: generic, y: generic };
+  for (const key of FRAME_KEYS) {
+    const raw = set?.[key];
+    out[key] = isCurrent
+      ? sanitizeFraming(raw)
+      // Legacy: keep the zoom the GM chose, drop pan units that no longer mean
+      // anything rather than reinterpreting them into a wrong crop.
+      : { zoom: clampNumber(raw?.zoom, ZOOM_MIN, ZOOM_MAX, 1), x: 0, y: 0 };
   }
 
-  const coverScale = Math.max(frameW / imgW, frameH / imgH) * z;
-  const renderedW = imgW * coverScale;
-  const renderedH = imgH * coverScale;
-
-  return {
-    x: Math.max(0, ((renderedW - frameW) / (2 * frameW)) * 100),
-    y: Math.max(0, ((renderedH - frameH) / (2 * frameH)) * 100)
-  };
-}
-
-/** Clamp a framing's pan into the given per-axis limits. */
-export function clampToLimits(framing, limits) {
-  const f = sanitizeFraming(framing);
-  const lx = Math.max(0, Number(limits?.x) || 0);
-  const ly = Math.max(0, Number(limits?.y) || 0);
-  return {
-    zoom: f.zoom,
-    x: clampNumber(f.x, -lx, lx, 0),
-    y: clampNumber(f.y, -ly, ly, 0)
-  };
+  return out;
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -121,13 +100,43 @@ function clampNumber(value, min, max, fallback) {
   if (!Number.isFinite(n)) return fallback;
   if (n < min) return min;
   if (n > max) return max;
-  return Math.round(n * 1000) / 1000;
+  return Math.round(n * 10000) / 10000;
 }
 
-function roundNumber(value, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.round(n * 1000) / 1000;
+/* -------------------------------------------- */
+/*  Geometry                                    */
+/* -------------------------------------------- */
+
+/**
+ * Size of the image element relative to its frame, per axis.
+ * @returns {{kx:number, ky:number}} multiples of frame width / height
+ */
+export function computeCoverScale({ frameAspect, imgAspect, zoom }) {
+  const z = clampNumber(zoom, ZOOM_MIN, ZOOM_MAX, 1);
+  if (!(frameAspect > 0) || !(imgAspect > 0)) return { kx: z, ky: z };
+  return {
+    kx: z * Math.max(1, imgAspect / frameAspect),
+    ky: z * Math.max(1, frameAspect / imgAspect)
+  };
+}
+
+/**
+ * Maximum pan for one axis, as a percentage of the IMAGE ELEMENT's own size.
+ * (translate() percentages resolve against the element, not the frame.)
+ *
+ * slack = (k - 1) * frame, half of it per side, expressed over the element (k * frame):
+ *     ((k - 1) / 2) / k  =  (k - 1) / (2k)
+ *
+ * @param {number} k
+ * @returns {number} percent, 0 when the axis has no slack
+ */
+export function maxPanPercent(k) {
+  return k > 1 ? ((k - 1) / (2 * k)) * 100 : 0;
+}
+
+/** Slack on one axis in pixels — used to convert a pixel drag into pan units. */
+export function panSlackPx(k, framePx) {
+  return k > 1 ? ((k - 1) * framePx) / 2 : 0;
 }
 
 /* -------------------------------------------- */
@@ -138,7 +147,6 @@ const sizeCache = new Map();
 
 /**
  * Natural pixel dimensions of an image, cached per src.
- * @param {string} src
  * @returns {Promise<{w:number,h:number}|null>} null if it cannot be loaded
  */
 export function getImageSize(src) {
@@ -161,54 +169,66 @@ export function getImageSize(src) {
 /* -------------------------------------------- */
 
 /**
- * Write a framing onto an element as CSS custom properties.
+ * Write the computed layout onto an element as CSS custom properties.
+ *
  * @param {HTMLElement} el
- * @param {object} framing
- * @param {string} prefix  e.g. "sk-b" for banner, "sk-s" for the square crop
+ * @param {object} spec
+ * @param {object} spec.framing   normalized framing
+ * @param {number} spec.kx
+ * @param {number} spec.ky
+ * @param {string} spec.prefix    e.g. "sk-b"
  */
-export function applyFramingVars(el, framing, prefix) {
+export function writeFramingVars(el, { framing, kx, ky, prefix }) {
   if (!el) return;
-  const { zoom, x, y } = sanitizeFraming(framing);
-  el.style.setProperty(`--${prefix}z`, String(zoom));
-  el.style.setProperty(`--${prefix}x`, `${x}%`);
-  el.style.setProperty(`--${prefix}y`, `${y}%`);
+  const f = sanitizeFraming(framing);
+  el.style.setProperty(`--${prefix}w`, `${kx * 100}%`);
+  el.style.setProperty(`--${prefix}h`, `${ky * 100}%`);
+  el.style.setProperty(`--${prefix}x`, `${f.x * maxPanPercent(kx)}%`);
+  el.style.setProperty(`--${prefix}y`, `${f.y * maxPanPercent(ky)}%`);
 }
 
 /**
- * Apply a framing, re-clamping it against the element's real dimensions once
- * the image has been measured.
- *
- * The vars are written twice on purpose: immediately with the stored values so
- * there is no unpositioned flash, then again after measurement. The second pass
- * can only tighten the pan, so in the common case nothing visibly moves.
+ * Measure, compute and apply framing for one image, and keep it correct if the
+ * frame is later resized (which changes the frame's aspect ratio, and therefore
+ * the layout).
  *
  * @param {HTMLElement} varTarget  element the CSS variables are written to
  * @param {object} spec
- * @param {string} spec.src        image URL, for natural-size measurement
+ * @param {string} spec.src
  * @param {object} spec.framing
  * @param {string} spec.prefix
  * @param {HTMLElement} [spec.frameEl]  the clipping box; defaults to varTarget
- * @returns {Promise<object>} the clamped framing actually applied
+ * @returns {Promise<{destroy:()=>void}>}
  */
-export async function applyFramedImage(varTarget, { src, framing, prefix, frameEl }) {
-  const initial = sanitizeFraming(framing);
-  applyFramingVars(varTarget, initial, prefix);
-
+export async function attachFramedImage(varTarget, { src, framing, prefix, frameEl }) {
+  const frame = frameEl ?? varTarget;
   const size = await getImageSize(src);
-  if (!size) return initial;
 
-  const box = (frameEl ?? varTarget).getBoundingClientRect();
-  const limits = computePanLimits({
-    frameW: box.width,
-    frameH: box.height,
-    imgW: size.w,
-    imgH: size.h,
-    zoom: initial.zoom
-  });
+  const paint = () => {
+    const rect = frame.getBoundingClientRect();
+    const frameAspect = rect.height > 0 ? rect.width / rect.height : 0;
+    const imgAspect = size && size.h > 0 ? size.w / size.h : 0;
+    const { kx, ky } = computeCoverScale({
+      frameAspect,
+      imgAspect,
+      zoom: sanitizeFraming(framing).zoom
+    });
+    writeFramingVars(varTarget, { framing, kx, ky, prefix });
+  };
 
-  const clamped = clampToLimits(initial, limits);
-  applyFramingVars(varTarget, clamped, prefix);
-  return clamped;
+  paint();
+
+  let observer = null;
+  if (typeof ResizeObserver !== "undefined") {
+    observer = new ResizeObserver(() => paint());
+    observer.observe(frame);
+  }
+
+  return {
+    destroy() {
+      observer?.disconnect();
+    }
+  };
 }
 
 /* -------------------------------------------- */
@@ -218,41 +238,38 @@ export async function applyFramedImage(varTarget, { src, framing, prefix, frameE
 /**
  * Make a framing preview interactive: drag to pan, wheel to zoom.
  *
- * @param {HTMLElement} surface  the clipping box the user drags inside
- * @param {object} initial       starting framing
- * @param {(zoom:number)=>{x:number,y:number}} getLimits  current pan limits
+ * @param {HTMLElement} surface   the clipping box the user drags inside
+ * @param {object} initial
+ * @param {(zoom:number)=>{kx:number, ky:number, frameW:number, frameH:number}} getGeometry
  * @param {(framing:object)=>void} onChange
- * @returns {{destroy:()=>void, set:(f:object)=>void, get:()=>object}}
  */
-export function makeFramer(surface, initial, getLimits, onChange) {
-  let framing = clampToLimits(initial, getLimits(sanitizeFraming(initial).zoom));
+export function makeFramer(surface, initial, getGeometry, onChange) {
+  let framing = sanitizeFraming(initial);
   let dragging = false;
   let pointerId = null;
   let startX = 0;
   let startY = 0;
-  let startFrameX = 0;
-  let startFrameY = 0;
+  let startPanX = 0;
+  let startPanY = 0;
 
-  const settle = () => {
-    framing = clampToLimits(framing, getLimits(framing.zoom));
+  const emit = () => {
+    framing = sanitizeFraming(framing);
     onChange?.(framing);
   };
 
-  /** Can this axis be panned at all right now? Drives the grab cursor. */
   const canPan = () => {
-    const limits = getLimits(framing.zoom);
-    return limits.x > 0.01 || limits.y > 0.01;
+    const g = getGeometry(framing.zoom);
+    return panSlackPx(g.kx, g.frameW) > 0.5 || panSlackPx(g.ky, g.frameH) > 0.5;
   };
 
   const onPointerDown = event => {
-    if (event.button !== 0) return;
-    if (!canPan()) return;
+    if (event.button !== 0 || !canPan()) return;
     dragging = true;
     pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
-    startFrameX = framing.x;
-    startFrameY = framing.y;
+    startPanX = framing.x;
+    startPanY = framing.y;
     surface.setPointerCapture?.(pointerId);
     surface.classList.add("is-panning");
     event.preventDefault();
@@ -260,12 +277,16 @@ export function makeFramer(surface, initial, getLimits, onChange) {
 
   const onPointerMove = event => {
     if (!dragging || event.pointerId !== pointerId) return;
-    const rect = surface.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    // Pixel drag -> percent of frame, matching the translate units exactly.
-    framing.x = startFrameX + ((event.clientX - startX) / rect.width) * 100;
-    framing.y = startFrameY + ((event.clientY - startY) / rect.height) * 100;
-    settle();
+    const g = getGeometry(framing.zoom);
+    const slackX = panSlackPx(g.kx, g.frameW);
+    const slackY = panSlackPx(g.ky, g.frameH);
+
+    // Convert the pixel drag into normalized pan units. A drag across the whole
+    // slack moves the value by exactly 1.
+    if (slackX > 0) framing.x = startPanX + (event.clientX - startX) / (2 * slackX);
+    if (slackY > 0) framing.y = startPanY + (event.clientY - startY) / (2 * slackY);
+
+    emit();
     event.preventDefault();
   };
 
@@ -281,7 +302,7 @@ export function makeFramer(surface, initial, getLimits, onChange) {
     event.preventDefault();
     const direction = event.deltaY > 0 ? -1 : 1;
     framing.zoom = clampNumber(framing.zoom + direction * (ZOOM_STEP * 2), ZOOM_MIN, ZOOM_MAX, 1);
-    settle();
+    emit();
   };
 
   surface.addEventListener("pointerdown", onPointerDown);
@@ -300,7 +321,7 @@ export function makeFramer(surface, initial, getLimits, onChange) {
     },
     set(next) {
       framing = sanitizeFraming(next);
-      settle();
+      emit();
     },
     get() {
       return { ...framing };

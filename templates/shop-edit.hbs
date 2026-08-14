@@ -62,6 +62,7 @@
             <div class="shopkeeper-theme-preview sk-theme-{{theme.id}}">
               <div class="sk-row"
                    data-shop-img="{{theme.sampleImg}}"
+                   data-shop-banner-img="{{theme.sampleBannerImg}}"
                    data-shop-accent="{{theme.sampleAccent}}"
                    data-shop-framing="{{theme.sampleFraming}}">
                 <div class="sk-bg" aria-hidden="true"></div>
@@ -134,9 +135,27 @@
                 <p class="shopkeeper-framing-sub">{{frame.hint}}</p>
 
                 <div class="shopkeeper-frame-box {{frame.shapeClass}}" data-frame="{{frame.key}}">
-                  <img src="{{../draft.img}}" alt="">
+                  <img src="{{frame.src}}" alt="">
                   <span class="shopkeeper-frame-grip"><i class="fa-solid fa-up-down-left-right"></i></span>
                 </div>
+
+                {{#if frame.canHaveOwnImage}}
+                  <div class="shopkeeper-framing-image-row">
+                    <button type="button" data-action="browseBannerImage">
+                      <i class="fa-solid fa-image"></i>
+                      {{#if frame.hasOwnImage}}{{localize "SHOPKEEPER.Framing.ChangeBannerImage"}}{{else}}{{localize "SHOPKEEPER.Framing.SetBannerImage"}}{{/if}}
+                    </button>
+                    {{#if frame.hasOwnImage}}
+                      <button type="button" class="shopkeeper-framing-clear" data-action="clearBannerImage"
+                              title="{{localize 'SHOPKEEPER.Framing.ClearBannerImage'}}">
+                        <i class="fa-solid fa-xmark"></i>
+                      </button>
+                    {{/if}}
+                    <span class="shopkeeper-framing-imgnote">
+                      {{#if frame.hasOwnImage}}{{localize "SHOPKEEPER.Framing.UsingOwnImage"}}{{else}}{{localize "SHOPKEEPER.Framing.UsingShopImage"}}{{/if}}
+                    </span>
+                  </div>
+                {{/if}}
 
                 <div class="shopkeeper-framing-controls">
                   <i class="fa-solid fa-magnifying-glass-minus"></i>

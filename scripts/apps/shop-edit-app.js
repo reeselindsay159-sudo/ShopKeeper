@@ -1,14 +1,14 @@
 import { MODULE_ID, MARKET_THEMES, ANIMATED_THEMES, DEFAULT_ACCENT } from "../constants.js";
 import {
   getShopsArray, getShop, createShop, updateShop, deleteShop, setShopInventory,
-  getTheme, setTheme
+  getTheme, setTheme, bannerImageFor
 } from "../shop-data.js";
 import { applyRowVars } from "../theme.js";
 import { getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntry } from "../tables.js";
 import { generateMissingPrices, getRarity } from "../pricing.js";
 import {
-  makeFramer, applyFramingVars, sanitizeFraming, defaultFraming, normalizeFramingSet,
-  computePanLimits, getImageSize, clampToLimits,
+  makeFramer, writeFramingVars, sanitizeFraming, defaultFraming, normalizeFramingSet,
+  computeCoverScale, getImageSize,
   ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
 } from "../framing.js";
 
@@ -87,7 +87,9 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       loadFromTable: ShopEditApp.#onLoadFromTable,
       generatePrices: ShopEditApp.#onGeneratePrices,
       clearShop: ShopEditApp.#onClearShop,
-      resetFraming: ShopEditApp.#onResetFraming
+      resetFraming: ShopEditApp.#onResetFraming,
+      browseBannerImage: ShopEditApp.#onBrowseBannerImage,
+      clearBannerImage: ShopEditApp.#onClearBannerImage
     }
   };
 
@@ -135,6 +137,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       sampleAccent: sample?.accent ?? DEFAULT_ACCENT,
       sampleSigil: (sample?.name?.trim()?.[0] ?? "S").toUpperCase(),
       // So the gallery previews the shop's actual crops, not the raw image.
+      sampleBannerImg: sample ? bannerImageFor(sample) : "icons/svg/shop.svg",
       sampleFraming: JSON.stringify(normalizeFramingSet(sample?.framing))
     }));
 
@@ -186,6 +189,8 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
         label: game.i18n.localize("SHOPKEEPER.Framing.ShopImage"),
         hint: game.i18n.localize("SHOPKEEPER.Framing.ShopImageHint"),
         shapeClass: "shopkeeper-frame-square",
+        src: this._draft.img,
+        canHaveOwnImage: false,
         zoom: framing.shop.zoom,
         zoomLabel: `${framing.shop.zoom.toFixed(2)}x`
       },
@@ -194,6 +199,9 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
         label: game.i18n.localize("SHOPKEEPER.Framing.Banner"),
         hint: game.i18n.localize("SHOPKEEPER.Framing.BannerHint"),
         shapeClass: "shopkeeper-frame-wide",
+        src: bannerImageFor(this._draft),
+        canHaveOwnImage: true,
+        hasOwnImage: !!this._draft.bannerImg,
         zoom: framing.banner.zoom,
         zoomLabel: `${framing.banner.zoom.toFixed(2)}x`
       }
@@ -257,51 +265,52 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this._framers = [];
     if (!this._draft) return;
 
-    const details = this.element.querySelector(".shopkeeper-framing");
-    if (details) {
-      details.addEventListener("toggle", () => { this._framingOpen = details.open; });
-    }
-
-    const src = this._draft.img;
-    // Natural size is needed before pan limits mean anything; it is cached, so
-    // this only actually loads once per image.
-    const size = await getImageSize(src);
+    // Each pane can have its own image: the banner may override the shop art.
+    const sources = {
+      shop: this._draft.img,
+      banner: bannerImageFor(this._draft)
+    };
 
     for (const box of this.element.querySelectorAll(".shopkeeper-frame-box[data-frame]")) {
       const key = box.dataset.frame;
       const stored = sanitizeFraming(this._draft.framing?.[key] ?? defaultFraming());
+      const size = await getImageSize(sources[key]);
 
-      // Limits depend on zoom, so they are recomputed on every change rather
-      // than captured once.
-      const getLimits = zoom => {
+      // Geometry depends on the frame's aspect and the zoom, so it is
+      // recomputed on demand rather than captured once.
+      const geometry = zoom => {
         const rect = box.getBoundingClientRect();
-        return computePanLimits({
-          frameW: rect.width,
-          frameH: rect.height,
-          imgW: size?.w ?? 0,
-          imgH: size?.h ?? 0,
-          zoom
-        });
+        const frameAspect = rect.height > 0 ? rect.width / rect.height : 0;
+        const imgAspect = size && size.h > 0 ? size.w / size.h : 0;
+        const { kx, ky } = computeCoverScale({ frameAspect, imgAspect, zoom });
+        return { kx, ky, frameW: rect.width, frameH: rect.height };
       };
 
-      // Read-only mirrors of this framing elsewhere in the form (the small
-      // image preview beside the shop name), kept in sync without their own
-      // framer so there is only ever one writer per framing key.
+      // Read-only mirrors of this framing elsewhere in the form, kept in sync
+      // without their own framer so there is one writer per framing key.
       const mirrors = this.element.querySelectorAll(`[data-frame-preview="${key}"]`);
 
       const paint = framing => {
-        applyFramingVars(box, framing, "sk-f");
-        for (const mirror of mirrors) applyFramingVars(mirror, framing, "sk-f");
-        const limits = getLimits(framing.zoom);
-        box.classList.toggle("is-pannable", limits.x > 0.01 || limits.y > 0.01);
+        const g = geometry(framing.zoom);
+        writeFramingVars(box, { framing, kx: g.kx, ky: g.ky, prefix: "sk-f" });
+        for (const mirror of mirrors) {
+          const mg = (() => {
+            const rect = mirror.getBoundingClientRect();
+            const fa = rect.height > 0 ? rect.width / rect.height : 0;
+            const ia = size && size.h > 0 ? size.w / size.h : 0;
+            return computeCoverScale({ frameAspect: fa, imgAspect: ia, zoom: framing.zoom });
+          })();
+          writeFramingVars(mirror, { framing, kx: mg.kx, ky: mg.ky, prefix: "sk-f" });
+        }
+        box.classList.toggle("is-pannable", g.kx > 1.001 || g.ky > 1.001);
       };
 
-      paint(clampToLimits(stored, getLimits(stored.zoom)));
+      paint(stored);
 
       const slider = this.element.querySelector(`[data-zoom-slider][data-frame="${key}"]`);
       const readout = this.element.querySelector(`[data-zoom-readout="${key}"]`);
 
-      const framer = makeFramer(box, stored, getLimits, framing => {
+      const framer = makeFramer(box, stored, geometry, framing => {
         this._draft.framing[key] = framing;
         paint(framing);
         if (slider && Number(slider.value) !== framing.zoom) slider.value = String(framing.zoom);
@@ -457,6 +466,35 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /* -------------------------------------------- */
   /*  Actions                                     */
   /* -------------------------------------------- */
+
+  static #onBrowseBannerImage(event, _target) {
+    event.stopPropagation();
+    if (!this._draft) return;
+    this._syncFormIntoDraft();
+    const FilePickerImpl = getFilePickerClass();
+    const fp = new FilePickerImpl({
+      type: "image",
+      current: this._draft.bannerImg || this._draft.img,
+      callback: path => {
+        this._draft.bannerImg = path;
+        // A different image means the old crop is meaningless.
+        this._draft.framing.banner = defaultFraming();
+        this._markDirty();
+        this.render();
+      }
+    });
+    fp.browse();
+  }
+
+  static #onClearBannerImage(event, _target) {
+    event.stopPropagation();
+    if (!this._draft) return;
+    this._syncFormIntoDraft();
+    this._draft.bannerImg = "";
+    this._draft.framing.banner = defaultFraming();
+    this._markDirty();
+    this.render();
+  }
 
   static #onResetFraming(event, target) {
     event.stopPropagation();
@@ -654,6 +692,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       description: this._draft.description ?? "",
       img: this._draft.img || "icons/svg/shop.svg",
       accent: this._draft.accent || DEFAULT_ACCENT,
+      bannerImg: this._draft.bannerImg || "",
       framing: normalizeFramingSet(this._draft.framing),
       visible: !!this._draft.visible
     });

@@ -72,7 +72,12 @@
       "BannerHint": "Used by themes that stretch the art across the whole row",
       "ShopImage": "Shop image (page + market row)",
       "Banner": "Market banner (full-width themes)",
-      "Reset": "Reset to fit"
+      "Reset": "Reset to fit",
+      "SetBannerImage": "Use a different image",
+      "ChangeBannerImage": "Change banner image",
+      "ClearBannerImage": "Use the shop image instead",
+      "UsingOwnImage": "Using its own image",
+      "UsingShopImage": "Using the shop image"
     },
     "Tools": {
       "FromTable": "Roll from table",
