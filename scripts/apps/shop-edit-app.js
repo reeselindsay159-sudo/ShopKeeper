@@ -4,6 +4,8 @@ import {
   getTheme, setTheme
 } from "../shop-data.js";
 import { applyRowVars } from "../theme.js";
+import { getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntry } from "../tables.js";
+import { generateMissingPrices, getRarity } from "../pricing.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -19,6 +21,23 @@ function getTextEditorClass() {
     ?? globalThis.TextEditor;
 }
 
+/** Keep the "how many to roll" input inside sane bounds. */
+export function clampCount(value) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 100);
+}
+
+/** Human-readable rarity label, preferring the system's own localization. */
+export function labelForRarity(rarity) {
+  if (!rarity) return null;
+  const fromSystem = CONFIG?.DND5E?.itemRarity?.[rarity];
+  if (typeof fromSystem === "string" && fromSystem) return fromSystem;
+  if (fromSystem?.label) return fromSystem.label;
+  // Fall back to splitting camelCase: "veryRare" -> "Very Rare"
+  return rarity.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase()).trim();
+}
+
 export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static APP_ID = "shopkeeper-edit";
 
@@ -30,6 +49,11 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.selectedShopId = null;
     /** In-memory copy of the selected shop being edited, saved explicitly. */
     this._draft = null;
+    /** True when the draft has changes that have not been written to the world. */
+    this._dirty = false;
+    /** Remembered table-load settings, so they survive a re-render. */
+    this._tableId = null;
+    this._tableCount = 5;
   }
 
   static DEFAULT_OPTIONS = {
@@ -51,7 +75,10 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       save: ShopEditApp.#onSave,
       showThemes: ShopEditApp.#onShowThemes,
       showShops: ShopEditApp.#onShowShops,
-      pickTheme: ShopEditApp.#onPickTheme
+      pickTheme: ShopEditApp.#onPickTheme,
+      loadFromTable: ShopEditApp.#onLoadFromTable,
+      generatePrices: ShopEditApp.#onGeneratePrices,
+      clearShop: ShopEditApp.#onClearShop
     }
   };
 
@@ -100,16 +127,35 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       sampleSigil: (sample?.name?.trim()?.[0] ?? "S").toUpperCase()
     }));
 
+    // Decorate inventory rows for display: rarity badge, and a flag for rows
+    // sitting at 0 gp (which would be free for players to take).
+    const inventory = (this._draft?.inventory ?? []).map(entry => ({
+      ...entry,
+      rarity: getRarity(entry.itemData),
+      rarityLabel: labelForRarity(getRarity(entry.itemData)),
+      isFree: !(Number(entry.price) > 0)
+    }));
+
+    const worldTables = getWorldTables();
+    if (this._tableId && !worldTables.some(t => t.id === this._tableId)) this._tableId = null;
+    this._tableId ??= worldTables[0]?.id ?? null;
+
     return {
       shops,
       hasShops: shops.length > 0,
       selectedShopId: this.selectedShopId,
       draft: this._draft,
-      hasInventory: !!this._draft?.inventory?.length,
+      inventory,
+      hasInventory: inventory.length > 0,
+      freeCount: inventory.filter(e => e.isFree).length,
       mode: this.mode,
       showingThemes: this.mode === "theme",
       themes,
-      activeTheme
+      activeTheme,
+      dirty: this._dirty,
+      tables: worldTables.map(t => ({ ...t, selected: t.id === this._tableId })),
+      hasTables: worldTables.length > 0,
+      tableCount: this._tableCount
     };
   }
 
@@ -131,7 +177,35 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     }
 
+    // Any edit inside the shop form marks the draft as unsaved.
+    const form = this.element.querySelector(".shopkeeper-edit-form");
+    if (form) {
+      form.addEventListener("input", event => {
+        if (event.target.closest(".shopkeeper-tools")) return; // tool inputs aren't shop data
+        this._markDirty();
+      });
+    }
+
+    // Remember tool selections across re-renders.
+    const tableSelect = this.element.querySelector('[name="table-id"]');
+    if (tableSelect) {
+      tableSelect.addEventListener("change", event => { this._tableId = event.target.value; });
+    }
+    const countInput = this.element.querySelector('[name="table-count"]');
+    if (countInput) {
+      countInput.addEventListener("change", event => {
+        this._tableCount = clampCount(event.target.value);
+      });
+    }
+
     applyRowVars(this.element);
+  }
+
+  /** Flag unsaved changes and refresh just the Save button's state. */
+  _markDirty() {
+    if (this._dirty) return;
+    this._dirty = true;
+    this.element?.querySelector(".shopkeeper-edit-save-row")?.classList.add("is-dirty");
   }
 
   /* -------------------------------------------- */
@@ -178,8 +252,20 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch (err) {
       return;
     }
+    // Dropping a RollTable populates the shop from that table.
+    if (data?.type === "RollTable") {
+      const table = await fromUuid(data.uuid);
+      if (!table) {
+        ui.notifications.warn(game.i18n.localize("SHOPKEEPER.Tools.TableMissing"));
+        return;
+      }
+      this._syncFormIntoDraft();
+      await this._loadFromTable(table, this._tableCount);
+      return;
+    }
+
     if (data?.type !== "Item") {
-      ui.notifications.warn("Only items can be dropped into a shop's inventory.");
+      ui.notifications.warn(game.i18n.localize("SHOPKEEPER.Tools.DropOnlyItems"));
       return;
     }
     const item = await fromUuid(data.uuid);
@@ -189,20 +275,143 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     this._syncFormIntoDraft();
-    this._draft.inventory.push({
-      id: foundry.utils.randomID(),
-      name: item.name,
-      img: item.img,
-      price: Number(item.system?.price?.value) || 0,
-      quantity: 1,
-      itemData: item.toObject()
-    });
+    this._draft.inventory.push(makeInventoryEntry(item));
+    this._markDirty();
     this.render();
+  }
+
+  /* -------------------------------------------- */
+  /*  Bulk inventory tools                        */
+  /* -------------------------------------------- */
+
+  /**
+   * Roll `count` items off `table` and merge them into the current draft.
+   * Never mutates the table document (see tables.js).
+   */
+  async _loadFromTable(table, count) {
+    if (!this._draft) return;
+
+    const wanted = clampCount(count);
+    let outcome;
+
+    try {
+      outcome = await rollItemsFromTable(table, wanted);
+    } catch (err) {
+      console.error("shopkeeper |", err);
+      ui.notifications.error(game.i18n.localize("SHOPKEEPER.Tools.TableFailed"));
+      return;
+    }
+
+    const { items, nonItems, emptyRolls } = outcome;
+
+    if (!items.length) {
+      ui.notifications.warn(game.i18n.format("SHOPKEEPER.Tools.TableNoItems", { table: table.name }));
+      return;
+    }
+
+    const { added, stacked } = mergeItemsIntoInventory(this._draft.inventory, items);
+    this._markDirty();
+    this.render();
+
+    let message = game.i18n.format("SHOPKEEPER.Tools.TableLoaded", {
+      count: items.length,
+      table: table.name,
+      added,
+      stacked
+    });
+    if (items.length < wanted) {
+      message += " " + game.i18n.format("SHOPKEEPER.Tools.TableShort", { wanted });
+    }
+    ui.notifications.info(message);
+
+    if (nonItems || emptyRolls) {
+      console.log(`shopkeeper | table load: ${nonItems} non-item results, ${emptyRolls} empty rolls`);
+    }
   }
 
   /* -------------------------------------------- */
   /*  Actions                                     */
   /* -------------------------------------------- */
+
+  static async #onLoadFromTable(_event, _target) {
+    if (!this._draft) return;
+    const select = this.element.querySelector('[name="table-id"]');
+    const countInput = this.element.querySelector('[name="table-count"]');
+    const tableId = select?.value || this._tableId;
+    this._tableCount = clampCount(countInput?.value ?? this._tableCount);
+
+    if (!tableId) {
+      ui.notifications.warn(game.i18n.localize("SHOPKEEPER.Tools.NoTables"));
+      return;
+    }
+    const table = game.tables.get(tableId);
+    if (!table) {
+      ui.notifications.warn(game.i18n.localize("SHOPKEEPER.Tools.TableMissing"));
+      return;
+    }
+
+    this._syncFormIntoDraft();
+    await this._loadFromTable(table, this._tableCount);
+  }
+
+  static async #onGeneratePrices(_event, _target) {
+    if (!this._draft) return;
+    this._syncFormIntoDraft();
+
+    const inventory = this._draft.inventory;
+    if (!inventory.length) {
+      ui.notifications.warn(game.i18n.localize("SHOPKEEPER.Tools.NothingToPrice"));
+      return;
+    }
+
+    const { priced, skipped, unchanged } = await generateMissingPrices(inventory);
+
+    if (priced) this._markDirty();
+    this.render();
+
+    if (!priced && !skipped.length) {
+      ui.notifications.info(game.i18n.format("SHOPKEEPER.Tools.AllPriced", { count: unchanged }));
+      return;
+    }
+
+    ui.notifications.info(game.i18n.format("SHOPKEEPER.Tools.PricesGenerated", { priced, unchanged }));
+
+    // A 0 gp item is free at checkout, so make unpriceable items impossible to miss.
+    if (skipped.length) {
+      const names = skipped.slice(0, 10).map(e => e.name).join(", ");
+      const more = skipped.length > 10 ? ` (+${skipped.length - 10} more)` : "";
+      ui.notifications.warn(
+        game.i18n.format("SHOPKEEPER.Tools.PricesSkipped", { count: skipped.length, names: names + more }),
+        { permanent: true }
+      );
+    }
+  }
+
+  static async #onClearShop(_event, _target) {
+    if (!this._draft) return;
+    this._syncFormIntoDraft();
+
+    const count = this._draft.inventory.length;
+    if (!count) {
+      ui.notifications.info(game.i18n.localize("SHOPKEEPER.Tools.AlreadyEmpty"));
+      return;
+    }
+
+    const DialogV2 = foundry.applications.api.DialogV2;
+    const confirmed = await DialogV2.confirm({
+      window: { title: game.i18n.localize("SHOPKEEPER.Tools.ClearConfirmTitle") },
+      content: game.i18n.format("SHOPKEEPER.Tools.ClearConfirmBody", {
+        count,
+        name: this._draft.name ?? ""
+      })
+    });
+    if (!confirmed) return;
+
+    this._draft.inventory = [];
+    this._markDirty();
+    this.render();
+    ui.notifications.info(game.i18n.format("SHOPKEEPER.Tools.Cleared", { count }));
+  }
 
   static #onShowThemes(_event, _target) {
     if (this._draft) this._syncFormIntoDraft();
@@ -223,21 +432,41 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     // Any open Market windows refresh via the updateSetting hook in main.js.
   }
 
-  static #onSelectShop(_event, target) {
+  static async #onSelectShop(_event, target) {
     const id = target.closest("[data-shop-id]")?.dataset.shopId;
     if (!id) return;
     if (id === this.selectedShopId && this.mode === "shops") return;
+
+    if (!(await this.#confirmDiscardChanges())) return;
+
     this.mode = "shops";
     this.selectedShopId = id;
     this._draft = null;
+    this._dirty = false;
     this.render();
   }
 
+  /**
+   * Bulk tools can change a lot of inventory at once, and none of it is written
+   * until Save. Switching shops would silently throw that away, so confirm.
+   * @returns {Promise<boolean>} true to proceed
+   */
+  async #confirmDiscardChanges() {
+    if (!this._dirty || !this._draft) return true;
+    const DialogV2 = foundry.applications.api.DialogV2;
+    return DialogV2.confirm({
+      window: { title: game.i18n.localize("SHOPKEEPER.Edit.UnsavedTitle") },
+      content: game.i18n.format("SHOPKEEPER.Edit.UnsavedBody", { name: this._draft.name ?? "" })
+    });
+  }
+
   static async #onNewShop(_event, _target) {
+    if (!(await this.#confirmDiscardChanges())) return;
     const shop = await createShop({});
     this.mode = "shops";
     this.selectedShopId = shop.id;
     this._draft = foundry.utils.deepClone(shop);
+    this._dirty = false;
     this.render();
   }
 
@@ -294,6 +523,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       visible: !!this._draft.visible
     });
     await setShopInventory(this.selectedShopId, this._draft.inventory);
+    this._dirty = false;
     ui.notifications.info(game.i18n.localize("SHOPKEEPER.Edit.Saved"));
     this.render();
   }
