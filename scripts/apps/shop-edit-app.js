@@ -3,12 +3,12 @@ import {
   getShopsArray, getShop, createShop, updateShop, deleteShop, setShopInventory,
   getTheme, setTheme, bannerImageFor
 } from "../shop-data.js";
-import { applyRowVars } from "../theme.js";
+import { applyRowVars, cssUrl } from "../theme.js";
 import { getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntry } from "../tables.js";
 import { generateMissingPrices, getRarity } from "../pricing.js";
 import {
   makeFramer, writeFramingVars, sanitizeFraming, defaultFraming, normalizeFramingSet,
-  computeCoverScale, getImageSize,
+  computeScale, getImageSize, FIT_FILL, FIT_CONTAIN,
   ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
 } from "../framing.js";
 
@@ -191,6 +191,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
         shapeClass: "shopkeeper-frame-square",
         src: this._draft.img,
         canHaveOwnImage: false,
+        isContain: framing.shop.fit === FIT_CONTAIN,
         zoom: framing.shop.zoom,
         zoomLabel: `${framing.shop.zoom.toFixed(2)}x`
       },
@@ -202,6 +203,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
         src: bannerImageFor(this._draft),
         canHaveOwnImage: true,
         hasOwnImage: !!this._draft.bannerImg,
+        isContain: framing.banner.fit === FIT_CONTAIN,
         zoom: framing.banner.zoom,
         zoomLabel: `${framing.banner.zoom.toFixed(2)}x`
       }
@@ -278,11 +280,12 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
       // Geometry depends on the frame's aspect and the zoom, so it is
       // recomputed on demand rather than captured once.
-      const geometry = zoom => {
+      const geometry = (zoom, fit) => {
         const rect = box.getBoundingClientRect();
         const frameAspect = rect.height > 0 ? rect.width / rect.height : 0;
         const imgAspect = size && size.h > 0 ? size.w / size.h : 0;
-        const { kx, ky } = computeCoverScale({ frameAspect, imgAspect, zoom });
+        const useFit = fit ?? this._draft.framing?.[key]?.fit ?? FIT_FILL;
+        const { kx, ky } = computeScale({ frameAspect, imgAspect, zoom, fit: useFit });
         return { kx, ky, frameW: rect.width, frameH: rect.height };
       };
 
@@ -290,22 +293,33 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       // without their own framer so there is one writer per framing key.
       const mirrors = this.element.querySelectorAll(`[data-frame-preview="${key}"]`);
 
+      const applyTo = (el, framing) => {
+        const rect = el.getBoundingClientRect();
+        const fa = rect.height > 0 ? rect.width / rect.height : 0;
+        const ia = size && size.h > 0 ? size.w / size.h : 0;
+        const { kx, ky } = computeScale({ frameAspect: fa, imgAspect: ia, zoom: framing.zoom, fit: framing.fit });
+        writeFramingVars(el, { framing, kx, ky, prefix: "sk-f" });
+        el.classList.toggle("is-fit", framing.fit === FIT_CONTAIN);
+        if (sources[key]) el.style.setProperty("--sk-src", cssUrl(sources[key]));
+        return { kx, ky };
+      };
+
       const paint = framing => {
-        const g = geometry(framing.zoom);
-        writeFramingVars(box, { framing, kx: g.kx, ky: g.ky, prefix: "sk-f" });
-        for (const mirror of mirrors) {
-          const mg = (() => {
-            const rect = mirror.getBoundingClientRect();
-            const fa = rect.height > 0 ? rect.width / rect.height : 0;
-            const ia = size && size.h > 0 ? size.w / size.h : 0;
-            return computeCoverScale({ frameAspect: fa, imgAspect: ia, zoom: framing.zoom });
-          })();
-          writeFramingVars(mirror, { framing, kx: mg.kx, ky: mg.ky, prefix: "sk-f" });
-        }
+        const g = applyTo(box, framing);
+        for (const mirror of mirrors) applyTo(mirror, framing);
         box.classList.toggle("is-pannable", g.kx > 1.001 || g.ky > 1.001);
       };
 
       paint(stored);
+
+      // Keep the preview correct if the GM resizes the Edit Shops window: the
+      // frame's aspect feeds the layout, so a stale value would show a crop
+      // that no longer matches what players will see.
+      if (typeof ResizeObserver !== "undefined") {
+        const observer = new ResizeObserver(() => paint(this._draft.framing?.[key] ?? stored));
+        observer.observe(box);
+        this._framers.push({ destroy: () => observer.disconnect() });
+      }
 
       const slider = this.element.querySelector(`[data-zoom-slider][data-frame="${key}"]`);
       const readout = this.element.querySelector(`[data-zoom-readout="${key}"]`);
@@ -321,6 +335,15 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       if (slider) {
         slider.addEventListener("input", event => {
           framer.set({ ...framer.get(), zoom: Number(event.target.value) });
+        });
+      }
+
+      const fitToggle = this.element.querySelector(`[data-fit-toggle][data-frame="${key}"]`);
+      if (fitToggle) {
+        fitToggle.addEventListener("change", event => {
+          // Contain mode has no crop to explore, so recentre the pan with it.
+          const fit = event.target.checked ? FIT_CONTAIN : FIT_FILL;
+          framer.set({ ...framer.get(), fit, x: 0, y: 0 });
         });
       }
 

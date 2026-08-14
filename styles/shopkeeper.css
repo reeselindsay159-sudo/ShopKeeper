@@ -1745,3 +1745,58 @@
   font-style: italic;
   color: var(--sk-muted);
 }
+
+/* =========================================================================
+   Fit-whole-image mode
+   -------------------------------------------------------------------------
+   In "contain" mode the image is scaled to fit entirely inside its frame, so
+   one axis falls short and would otherwise show bare letterbox bars. A blurred,
+   darkened copy of the same picture fills that gap instead, which reads as
+   intentional depth rather than empty space.
+   ========================================================================= */
+
+.sk-thumb.is-fit::before,
+.shopkeeper-shop-portrait.is-fit::before,
+.shopkeeper-frame-box.is-fit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--sk-src);
+  background-size: cover;
+  background-position: center;
+  filter: blur(14px) brightness(.5) saturate(.9);
+  transform: scale(1.2);
+  pointer-events: none;
+}
+
+/* The image itself must sit above its own backdrop. */
+.sk-thumb.is-fit img,
+.shopkeeper-shop-portrait.is-fit img,
+.shopkeeper-frame-box.is-fit img {
+  z-index: 1;
+}
+
+/* The full-bleed banner has its own scrim and edge fade, so a blurred backdrop
+   would fight with it; the row's base colour already fills any shortfall. */
+.sk-bg.is-fit::before {
+  background-color: transparent;
+}
+
+.shopkeeper-fit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78em;
+  color: var(--sk-muted);
+  cursor: pointer;
+  user-select: none;
+  flex-wrap: wrap;
+}
+
+.shopkeeper-fit-note {
+  font-size: 0.92em;
+  font-style: italic;
+  opacity: .8;
+  flex: 1 1 100%;
+}

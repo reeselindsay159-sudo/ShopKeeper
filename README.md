@@ -24,7 +24,9 @@ An in-game shop interface module for Foundry VTT (v13+) and the dnd5e system.
 
 The banner can also use a **completely different image** from the shop. In the Market banner pane, choose *Use a different image* to pick one, or clear it to fall back to the shop image. This is the better option when your shop art is a portrait or icon that will never crop well into a wide strip.
 
-Drag inside a preview to pan, scroll over it or use the slider to zoom (1x–4x), and press the reset arrow to return to fit.
+Drag inside a preview to pan, scroll over it or use the slider to zoom (1x–4x), and press the reset arrow to return to fit. Dragging moves the picture 1:1 with the cursor.
+
+**Fit whole image** (per frame) switches from filling the frame to fitting inside it, so nothing is ever cropped. Because that leaves a gap on one axis, the gap is filled with a blurred, darkened copy of the same picture rather than bare letterbox bars. Use it when the art's shape doesn't match the frame's — a tall portrait in the square shop image, for instance — and you'd rather see all of it than crop it.
 
 The whole image is reachable. Images are laid out to cover the frame, so a square image in a wide banner already extends far above and below it even at 1x — panning brings that hidden part into view, and stops exactly when the image's edge meets the frame's, so empty space is never exposed.
 

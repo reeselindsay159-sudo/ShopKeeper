@@ -77,7 +77,9 @@
       "ChangeBannerImage": "Change banner image",
       "ClearBannerImage": "Use the shop image instead",
       "UsingOwnImage": "Using its own image",
-      "UsingShopImage": "Using the shop image"
+      "UsingShopImage": "Using the shop image",
+      "FitWhole": "Fit whole image",
+      "FitWholeHint": "Never crop — scales the picture to fit and fills the gap with a blurred copy"
     },
     "Tools": {
       "FromTable": "Roll from table",

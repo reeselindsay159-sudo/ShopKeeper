@@ -55,9 +55,13 @@ export const FRAME_KEYS = ["shop", "banner"];
  */
 export const FRAMING_VERSION = 2;
 
-/** @returns {{zoom:number,x:number,y:number}} a fresh identity framing */
+/** Fit modes: fill the frame (cropping), or show the whole image (letterboxed). */
+export const FIT_FILL = "fill";
+export const FIT_CONTAIN = "contain";
+
+/** @returns {object} a fresh identity framing */
 export function defaultFraming() {
-  return { zoom: 1, x: 0, y: 0 };
+  return { zoom: 1, x: 0, y: 0, fit: FIT_FILL };
 }
 
 /** @returns {object} a fresh framing set, version-stamped */
@@ -70,7 +74,8 @@ export function sanitizeFraming(framing) {
   return {
     zoom: clampNumber(framing?.zoom, ZOOM_MIN, ZOOM_MAX, 1),
     x: clampNumber(framing?.x, -1, 1, 0),
-    y: clampNumber(framing?.y, -1, 1, 0)
+    y: clampNumber(framing?.y, -1, 1, 0),
+    fit: framing?.fit === FIT_CONTAIN ? FIT_CONTAIN : FIT_FILL
   };
 }
 
@@ -89,7 +94,7 @@ export function normalizeFramingSet(set) {
       ? sanitizeFraming(raw)
       // Legacy: keep the zoom the GM chose, drop pan units that no longer mean
       // anything rather than reinterpreting them into a wrong crop.
-      : { zoom: clampNumber(raw?.zoom, ZOOM_MIN, ZOOM_MAX, 1), x: 0, y: 0 };
+      : { zoom: clampNumber(raw?.zoom, ZOOM_MIN, ZOOM_MAX, 1), x: 0, y: 0, fit: FIT_FILL };
   }
 
   return out;
@@ -109,16 +114,28 @@ function clampNumber(value, min, max, fallback) {
 
 /**
  * Size of the image element relative to its frame, per axis.
+ *
+ * `fill` (default) covers the frame, so one axis overflows and gets cropped —
+ * that overflow is what panning explores. `contain` fits the whole image inside
+ * the frame instead, so nothing is ever cropped; one axis then falls short of
+ * the frame, which is why contain mode also paints a blurred backdrop rather
+ * than leaving bare letterbox bars.
+ *
  * @returns {{kx:number, ky:number}} multiples of frame width / height
  */
-export function computeCoverScale({ frameAspect, imgAspect, zoom }) {
+export function computeScale({ frameAspect, imgAspect, zoom, fit = FIT_FILL }) {
   const z = clampNumber(zoom, ZOOM_MIN, ZOOM_MAX, 1);
   if (!(frameAspect > 0) || !(imgAspect > 0)) return { kx: z, ky: z };
-  return {
-    kx: z * Math.max(1, imgAspect / frameAspect),
-    ky: z * Math.max(1, frameAspect / imgAspect)
-  };
+
+  const ratio = imgAspect / frameAspect;
+  if (fit === FIT_CONTAIN) {
+    return { kx: z * Math.min(1, ratio), ky: z * Math.min(1, 1 / ratio) };
+  }
+  return { kx: z * Math.max(1, ratio), ky: z * Math.max(1, 1 / ratio) };
 }
+
+/** @deprecated kept as an alias so older call sites keep working */
+export const computeCoverScale = computeScale;
 
 /**
  * Maximum pan for one axis, as a percentage of the IMAGE ELEMENT's own size.
@@ -142,6 +159,12 @@ export function panSlackPx(k, framePx) {
 /* -------------------------------------------- */
 /*  Measurement                                 */
 /* -------------------------------------------- */
+
+/** Local copy of the url() escaper so framing.js has no import cycle. */
+function cssUrlLocal(path) {
+  const safe = String(path).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `url("${safe}")`;
+}
 
 const sizeCache = new Map();
 
@@ -205,15 +228,15 @@ export async function attachFramedImage(varTarget, { src, framing, prefix, frame
   const size = await getImageSize(src);
 
   const paint = () => {
+    const f = sanitizeFraming(framing);
     const rect = frame.getBoundingClientRect();
     const frameAspect = rect.height > 0 ? rect.width / rect.height : 0;
     const imgAspect = size && size.h > 0 ? size.w / size.h : 0;
-    const { kx, ky } = computeCoverScale({
-      frameAspect,
-      imgAspect,
-      zoom: sanitizeFraming(framing).zoom
-    });
-    writeFramingVars(varTarget, { framing, kx, ky, prefix });
+    const { kx, ky } = computeScale({ frameAspect, imgAspect, zoom: f.zoom, fit: f.fit });
+    writeFramingVars(varTarget, { framing: f, kx, ky, prefix });
+    // Contain mode needs a backdrop behind the letterboxed image.
+    varTarget.classList.toggle("is-fit", f.fit === FIT_CONTAIN);
+    if (src) varTarget.style.setProperty("--sk-src", cssUrlLocal(src));
   };
 
   paint();
@@ -281,10 +304,13 @@ export function makeFramer(surface, initial, getGeometry, onChange) {
     const slackX = panSlackPx(g.kx, g.frameW);
     const slackY = panSlackPx(g.ky, g.frameH);
 
-    // Convert the pixel drag into normalized pan units. A drag across the whole
-    // slack moves the value by exactly 1.
-    if (slackX > 0) framing.x = startPanX + (event.clientX - startX) / (2 * slackX);
-    if (slackY > 0) framing.y = startPanY + (event.clientY - startY) / (2 * slackY);
+    // Convert the pixel drag into normalized pan units. Normalized ±1 equals
+    // exactly `slack` pixels of travel (see maxPanPercent), so dividing by the
+    // slack makes the image track the cursor 1:1. Dividing by 2*slack — as this
+    // did originally — moved the image at half cursor speed and made panning
+    // feel broken.
+    if (slackX > 0) framing.x = startPanX + (event.clientX - startX) / slackX;
+    if (slackY > 0) framing.y = startPanY + (event.clientY - startY) / slackY;
 
     emit();
     event.preventDefault();

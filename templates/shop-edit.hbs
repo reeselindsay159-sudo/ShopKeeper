@@ -157,6 +157,12 @@
                   </div>
                 {{/if}}
 
+                <label class="shopkeeper-fit-toggle">
+                  <input type="checkbox" data-fit-toggle data-frame="{{frame.key}}" {{#if frame.isContain}}checked{{/if}}>
+                  {{localize "SHOPKEEPER.Framing.FitWhole"}}
+                  <span class="shopkeeper-fit-note">{{localize "SHOPKEEPER.Framing.FitWholeHint"}}</span>
+                </label>
+
                 <div class="shopkeeper-framing-controls">
                   <i class="fa-solid fa-magnifying-glass-minus"></i>
                   <input type="range" data-zoom-slider data-frame="{{frame.key}}"
