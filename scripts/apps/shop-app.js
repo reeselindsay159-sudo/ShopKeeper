@@ -1,6 +1,6 @@
 import { MODULE_ID } from "../constants.js";
 import { getShop } from "../shop-data.js";
-import { applyFramingVars } from "../framing.js";
+import { applyFramedImage } from "../framing.js";
 import { requestPurchase } from "../socket.js";
 import { currencyToCopper, copperToGp } from "../currency.js";
 
@@ -44,7 +44,13 @@ export class ShopApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _onRender(context, options) {
     super._onRender?.(context, options);
     const portrait = this.element.querySelector("[data-shop-framing]");
-    if (portrait) applyFramingVars(portrait, this._shop?.framing?.shop, "sk-s");
+    if (portrait && this._shop) {
+      applyFramedImage(portrait, {
+        src: this._shop.img,
+        framing: this._shop.framing?.shop,
+        prefix: "sk-s"
+      });
+    }
   }
 
   get title() {

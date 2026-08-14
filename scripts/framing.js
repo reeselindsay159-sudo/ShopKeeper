@@ -1,19 +1,39 @@
 /**
  * Per-shop image framing: zoom and pan.
  *
- * A shop stores two independent framings of the same source image, because the
- * two places it appears have very different shapes:
- *   - `shop`   the tall image on the individual shop page
- *   - `banner` the wide row in the Market
+ * A shop stores two independent framings of the same source image:
+ *   - `shop`   the square crop, used by BOTH the shop page portrait and the
+ *              shop thumbnail in the Market row (they are the same picture in
+ *              the same shape, so they share one framing)
+ *   - `banner` the wide crop, used only by themes that bleed the artwork across
+ *              the whole Market row (Cinematic, Purple Haze)
  *
  * The transform used everywhere is:
  *     transform: translate(x%, y%) scale(zoom)
  *
  * CSS applies a transform list right-to-left, so the scale happens first and
- * the translate is then resolved against the element's *untransformed* box.
- * That makes the percentages easy to reason about: the element always fills its
- * frame, so at zoom Z the image overflows each edge by exactly (Z - 1) / 2 of
- * the frame, and that is precisely the maximum pan. See clampFraming().
+ * the translate is then resolved against the element's *untransformed* box —
+ * i.e. against the frame. That makes the pan units easy: x is a percentage of
+ * the frame width, y a percentage of the frame height.
+ *
+ * ---------------------------------------------------------------------------
+ * Pan limits are aspect-aware, and this is the subtle part.
+ *
+ * The image is laid out with `cover`, so at zoom 1 it already overflows the
+ * frame on one axis whenever their aspect ratios differ — a square image in a
+ * 5:1 banner is scaled to the frame's width and then stands five times taller
+ * than the frame. Treating "zoom 1" as "no overflow, no panning" would strand
+ * the GM on a fixed middle band of their own artwork, unable to reach the top
+ * or bottom of it. So the limits are derived from the real rendered size:
+ *
+ *     renderedSize = imageSize * max(frameW/imgW, frameH/imgH) * zoom
+ *     overflow     = max(0, rendered - frame)
+ *     limit%       = overflow / (2 * frame) * 100
+ *
+ * That is exactly far enough to bring each edge of the image to the matching
+ * edge of the frame, and no further — so the whole picture is reachable and
+ * empty space is still impossible.
+ * ---------------------------------------------------------------------------
  */
 
 export const ZOOM_MIN = 1;
@@ -33,19 +53,66 @@ export function defaultFramingSet() {
 }
 
 /**
- * Coerce arbitrary stored data into a valid framing, clamping pan so the image
- * can never be dragged past its own edge (which would show empty background).
- * @param {any} framing
- * @returns {{zoom:number,x:number,y:number}}
+ * Coerce arbitrary stored data into a structurally valid framing.
+ *
+ * This deliberately does NOT clamp pan: the valid pan range depends on the
+ * image and frame dimensions, which are not known at the storage layer.
+ * Clamping happens in clampToLimits() once those are measured.
  */
-export function clampFraming(framing) {
-  const zoom = clampNumber(framing?.zoom, ZOOM_MIN, ZOOM_MAX, 1);
-  // At zoom 1 the image exactly fills the frame, so no panning is possible.
-  const limit = ((zoom - 1) / 2) * 100;
+export function sanitizeFraming(framing) {
   return {
-    zoom,
-    x: clampNumber(framing?.x, -limit, limit, 0),
-    y: clampNumber(framing?.y, -limit, limit, 0)
+    zoom: clampNumber(framing?.zoom, ZOOM_MIN, ZOOM_MAX, 1),
+    x: roundNumber(framing?.x, 0),
+    y: roundNumber(framing?.y, 0)
+  };
+}
+
+/** Normalize a whole framing set, filling in anything missing. */
+export function normalizeFramingSet(framing) {
+  const out = {};
+  for (const key of FRAME_KEYS) out[key] = sanitizeFraming(framing?.[key]);
+  return out;
+}
+
+/**
+ * How far the image may be panned, in percent of the frame, per axis.
+ *
+ * @param {object} spec
+ * @param {number} spec.frameW  frame width in px
+ * @param {number} spec.frameH  frame height in px
+ * @param {number} spec.imgW    image natural width in px
+ * @param {number} spec.imgH    image natural height in px
+ * @param {number} spec.zoom
+ * @returns {{x:number, y:number}}
+ */
+export function computePanLimits({ frameW, frameH, imgW, imgH, zoom }) {
+  const z = clampNumber(zoom, ZOOM_MIN, ZOOM_MAX, 1);
+
+  // Without real measurements, fall back to the aspect-agnostic estimate.
+  if (!(frameW > 0 && frameH > 0 && imgW > 0 && imgH > 0)) {
+    const generic = ((z - 1) / 2) * 100;
+    return { x: generic, y: generic };
+  }
+
+  const coverScale = Math.max(frameW / imgW, frameH / imgH) * z;
+  const renderedW = imgW * coverScale;
+  const renderedH = imgH * coverScale;
+
+  return {
+    x: Math.max(0, ((renderedW - frameW) / (2 * frameW)) * 100),
+    y: Math.max(0, ((renderedH - frameH) / (2 * frameH)) * 100)
+  };
+}
+
+/** Clamp a framing's pan into the given per-axis limits. */
+export function clampToLimits(framing, limits) {
+  const f = sanitizeFraming(framing);
+  const lx = Math.max(0, Number(limits?.x) || 0);
+  const ly = Math.max(0, Number(limits?.y) || 0);
+  return {
+    zoom: f.zoom,
+    x: clampNumber(f.x, -lx, lx, 0),
+    y: clampNumber(f.y, -ly, ly, 0)
   };
 }
 
@@ -54,46 +121,111 @@ function clampNumber(value, min, max, fallback) {
   if (!Number.isFinite(n)) return fallback;
   if (n < min) return min;
   if (n > max) return max;
-  // Avoid accumulating float noise in stored data.
   return Math.round(n * 1000) / 1000;
 }
 
-/** Normalize a whole framing set, filling in anything missing. */
-export function normalizeFramingSet(framing) {
-  const out = {};
-  for (const key of FRAME_KEYS) out[key] = clampFraming(framing?.[key]);
-  return out;
+function roundNumber(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(n * 1000) / 1000;
 }
 
-/** How far the image may be panned at this zoom, in percent. */
-export function panLimit(zoom) {
-  return ((clampNumber(zoom, ZOOM_MIN, ZOOM_MAX, 1) - 1) / 2) * 100;
+/* -------------------------------------------- */
+/*  Measurement                                 */
+/* -------------------------------------------- */
+
+const sizeCache = new Map();
+
+/**
+ * Natural pixel dimensions of an image, cached per src.
+ * @param {string} src
+ * @returns {Promise<{w:number,h:number}|null>} null if it cannot be loaded
+ */
+export function getImageSize(src) {
+  if (!src) return Promise.resolve(null);
+  if (sizeCache.has(src)) return sizeCache.get(src);
+
+  const promise = new Promise(resolve => {
+    const probe = new Image();
+    probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight });
+    probe.onerror = () => resolve(null);
+    probe.src = src;
+  });
+
+  sizeCache.set(src, promise);
+  return promise;
 }
+
+/* -------------------------------------------- */
+/*  Applying framing                            */
+/* -------------------------------------------- */
 
 /**
  * Write a framing onto an element as CSS custom properties.
  * @param {HTMLElement} el
  * @param {object} framing
- * @param {string} prefix  e.g. "sk-b" for banner, "sk-s" for the shop page
+ * @param {string} prefix  e.g. "sk-b" for banner, "sk-s" for the square crop
  */
 export function applyFramingVars(el, framing, prefix) {
   if (!el) return;
-  const { zoom, x, y } = clampFraming(framing);
+  const { zoom, x, y } = sanitizeFraming(framing);
   el.style.setProperty(`--${prefix}z`, String(zoom));
   el.style.setProperty(`--${prefix}x`, `${x}%`);
   el.style.setProperty(`--${prefix}y`, `${y}%`);
 }
 
 /**
+ * Apply a framing, re-clamping it against the element's real dimensions once
+ * the image has been measured.
+ *
+ * The vars are written twice on purpose: immediately with the stored values so
+ * there is no unpositioned flash, then again after measurement. The second pass
+ * can only tighten the pan, so in the common case nothing visibly moves.
+ *
+ * @param {HTMLElement} varTarget  element the CSS variables are written to
+ * @param {object} spec
+ * @param {string} spec.src        image URL, for natural-size measurement
+ * @param {object} spec.framing
+ * @param {string} spec.prefix
+ * @param {HTMLElement} [spec.frameEl]  the clipping box; defaults to varTarget
+ * @returns {Promise<object>} the clamped framing actually applied
+ */
+export async function applyFramedImage(varTarget, { src, framing, prefix, frameEl }) {
+  const initial = sanitizeFraming(framing);
+  applyFramingVars(varTarget, initial, prefix);
+
+  const size = await getImageSize(src);
+  if (!size) return initial;
+
+  const box = (frameEl ?? varTarget).getBoundingClientRect();
+  const limits = computePanLimits({
+    frameW: box.width,
+    frameH: box.height,
+    imgW: size.w,
+    imgH: size.h,
+    zoom: initial.zoom
+  });
+
+  const clamped = clampToLimits(initial, limits);
+  applyFramingVars(varTarget, clamped, prefix);
+  return clamped;
+}
+
+/* -------------------------------------------- */
+/*  Interactive editing                         */
+/* -------------------------------------------- */
+
+/**
  * Make a framing preview interactive: drag to pan, wheel to zoom.
  *
  * @param {HTMLElement} surface  the clipping box the user drags inside
- * @param {object} initial       starting framing (mutated copy is returned via onChange)
- * @param {(framing:object)=>void} onChange  called on every change
+ * @param {object} initial       starting framing
+ * @param {(zoom:number)=>{x:number,y:number}} getLimits  current pan limits
+ * @param {(framing:object)=>void} onChange
  * @returns {{destroy:()=>void, set:(f:object)=>void, get:()=>object}}
  */
-export function makeFramer(surface, initial, onChange) {
-  let framing = clampFraming(initial);
+export function makeFramer(surface, initial, getLimits, onChange) {
+  let framing = clampToLimits(initial, getLimits(sanitizeFraming(initial).zoom));
   let dragging = false;
   let pointerId = null;
   let startX = 0;
@@ -101,15 +233,20 @@ export function makeFramer(surface, initial, onChange) {
   let startFrameX = 0;
   let startFrameY = 0;
 
-  const emit = () => {
-    framing = clampFraming(framing);
+  const settle = () => {
+    framing = clampToLimits(framing, getLimits(framing.zoom));
     onChange?.(framing);
   };
 
+  /** Can this axis be panned at all right now? Drives the grab cursor. */
+  const canPan = () => {
+    const limits = getLimits(framing.zoom);
+    return limits.x > 0.01 || limits.y > 0.01;
+  };
+
   const onPointerDown = event => {
-    // Only pan when zoomed in; at 1x there is nothing to reveal.
-    if (framing.zoom <= ZOOM_MIN) return;
     if (event.button !== 0) return;
+    if (!canPan()) return;
     dragging = true;
     pointerId = event.pointerId;
     startX = event.clientX;
@@ -125,10 +262,10 @@ export function makeFramer(surface, initial, onChange) {
     if (!dragging || event.pointerId !== pointerId) return;
     const rect = surface.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    // Convert pixel drag into percent-of-frame, matching the translate units.
+    // Pixel drag -> percent of frame, matching the translate units exactly.
     framing.x = startFrameX + ((event.clientX - startX) / rect.width) * 100;
     framing.y = startFrameY + ((event.clientY - startY) / rect.height) * 100;
-    emit();
+    settle();
     event.preventDefault();
   };
 
@@ -143,8 +280,8 @@ export function makeFramer(surface, initial, onChange) {
   const onWheel = event => {
     event.preventDefault();
     const direction = event.deltaY > 0 ? -1 : 1;
-    framing.zoom = framing.zoom + direction * (ZOOM_STEP * 2);
-    emit();
+    framing.zoom = clampNumber(framing.zoom + direction * (ZOOM_STEP * 2), ZOOM_MIN, ZOOM_MAX, 1);
+    settle();
   };
 
   surface.addEventListener("pointerdown", onPointerDown);
@@ -162,11 +299,12 @@ export function makeFramer(surface, initial, onChange) {
       surface.removeEventListener("wheel", onWheel);
     },
     set(next) {
-      framing = clampFraming(next);
-      emit();
+      framing = sanitizeFraming(next);
+      settle();
     },
     get() {
       return { ...framing };
-    }
+    },
+    canPan
   };
 }

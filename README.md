@@ -17,9 +17,14 @@ An in-game shop interface module for Foundry VTT (v13+) and the dnd5e system.
 
 ## Image framing
 
-The shop page shows a tall square image while the Market shows a wide banner, so one crop rarely suits both. **Edit Shops → Image Framing** gives each shop two independent framings of the same source image.
+**Edit Shops → Image Framing** gives each shop two independent crops of the same source image:
 
-Drag inside a preview to pan, scroll over it or use the slider to zoom (1x–4x), and press the reset arrow to return to fit. Panning is only possible once zoomed in, and pan is clamped so the image can never be dragged past its own edge — if you zoom back out, any existing pan is pulled back in with it, so a frame can never show empty space.
+- **Shop image** — the square crop. Used by *both* the shop page portrait and the shop thumbnail in the Market row, since they are the same picture in the same shape. Editing it moves both.
+- **Market banner** — the wide crop. Used only by themes that stretch the artwork across the whole row (Cinematic, Purple Haze).
+
+Drag inside a preview to pan, scroll over it or use the slider to zoom (1x–4x), and press the reset arrow to return to fit.
+
+Pan limits are derived from the real rendered size, not from zoom alone. Images are laid out with `cover`, so a square image dropped into a wide banner is already scaled to the frame's width and stands several times taller than the frame — even at 1x. The limits account for that, so the entire image is reachable by panning, while stopping exactly at each edge so empty space is never exposed. If you zoom back out, any existing pan is pulled in with it.
 
 Framing is stored per shop and applies for every player. Shops made before this version default to 1x with no pan, which is exactly how they looked previously.
 

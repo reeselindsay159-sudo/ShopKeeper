@@ -84,7 +84,8 @@
       <div class="shopkeeper-edit-form">
         <div class="shopkeeper-edit-top-row">
           <div class="shopkeeper-edit-image-block">
-            <div class="shopkeeper-frame-box shopkeeper-frame-square" data-frame="shop">
+            {{!-- Mirrors the shop framing; edited in the Image Framing panel below. --}}
+            <div class="shopkeeper-frame-box shopkeeper-frame-square" data-frame-preview="shop">
               <img src="{{draft.img}}" alt="">
             </div>
             <button type="button" data-action="browseImage">{{localize "SHOPKEEPER.Edit.ShopImage"}}</button>
@@ -130,6 +131,7 @@
                     <i class="fa-solid fa-rotate-left"></i>
                   </button>
                 </div>
+                <p class="shopkeeper-framing-sub">{{frame.hint}}</p>
 
                 <div class="shopkeeper-frame-box {{frame.shapeClass}}" data-frame="{{frame.key}}">
                   <img src="{{../draft.img}}" alt="">

@@ -68,8 +68,10 @@
     "Framing": {
       "Heading": "Image Framing",
       "Hint": "Drag to pan, scroll or use the slider to zoom",
-      "ShopImage": "Shop page",
-      "Banner": "Market banner",
+      "ShopImageHint": "Used by the shop page and the thumbnail in the market row",
+      "BannerHint": "Used by themes that stretch the art across the whole row",
+      "ShopImage": "Shop image (page + market row)",
+      "Banner": "Market banner (full-width themes)",
       "Reset": "Reset to fit"
     },
     "Tools": {

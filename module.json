@@ -2,7 +2,7 @@
   "id": "shopkeeper",
   "title": "Shopkeeper",
   "description": "An in-game shop interface for D&D 5e. Players browse a market of shops and buy items with their character's coin; the GM manages shops, stock, and prices.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "authors": [
     {
       "name": "Reese"

@@ -7,7 +7,8 @@ import { applyRowVars } from "../theme.js";
 import { getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntry } from "../tables.js";
 import { generateMissingPrices, getRarity } from "../pricing.js";
 import {
-  makeFramer, applyFramingVars, clampFraming, defaultFraming, normalizeFramingSet,
+  makeFramer, applyFramingVars, sanitizeFraming, defaultFraming, normalizeFramingSet,
+  computePanLimits, getImageSize, clampToLimits,
   ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
 } from "../framing.js";
 
@@ -133,8 +134,8 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       sampleImg: sample?.img ?? "icons/svg/shop.svg",
       sampleAccent: sample?.accent ?? DEFAULT_ACCENT,
       sampleSigil: (sample?.name?.trim()?.[0] ?? "S").toUpperCase(),
-      // So the gallery previews the shop's actual banner crop, not the raw image.
-      sampleFraming: JSON.stringify(clampFraming(sample?.framing?.banner))
+      // So the gallery previews the shop's actual crops, not the raw image.
+      sampleFraming: JSON.stringify(normalizeFramingSet(sample?.framing))
     }));
 
     // Decorate inventory rows for display: rarity badge, and a flag for rows
@@ -183,6 +184,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       {
         key: "shop",
         label: game.i18n.localize("SHOPKEEPER.Framing.ShopImage"),
+        hint: game.i18n.localize("SHOPKEEPER.Framing.ShopImageHint"),
         shapeClass: "shopkeeper-frame-square",
         zoom: framing.shop.zoom,
         zoomLabel: `${framing.shop.zoom.toFixed(2)}x`
@@ -190,6 +192,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       {
         key: "banner",
         label: game.i18n.localize("SHOPKEEPER.Framing.Banner"),
+        hint: game.i18n.localize("SHOPKEEPER.Framing.BannerHint"),
         shapeClass: "shopkeeper-frame-wide",
         zoom: framing.banner.zoom,
         zoomLabel: `${framing.banner.zoom.toFixed(2)}x`
@@ -249,7 +252,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
    * Rebuilt on every render, so old controllers must be torn down first or we
    * would leak a listener set per render.
    */
-  _setupFraming() {
+  async _setupFraming() {
     for (const framer of this._framers) framer.destroy();
     this._framers = [];
     if (!this._draft) return;
@@ -259,21 +262,48 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       details.addEventListener("toggle", () => { this._framingOpen = details.open; });
     }
 
+    const src = this._draft.img;
+    // Natural size is needed before pan limits mean anything; it is cached, so
+    // this only actually loads once per image.
+    const size = await getImageSize(src);
+
     for (const box of this.element.querySelectorAll(".shopkeeper-frame-box[data-frame]")) {
       const key = box.dataset.frame;
-      const initial = this._draft.framing?.[key] ?? defaultFraming();
+      const stored = sanitizeFraming(this._draft.framing?.[key] ?? defaultFraming());
 
-      // Paint the starting state immediately.
-      applyFramingVars(box, initial, "sk-f");
-      box.classList.toggle("is-zoomed", initial.zoom > ZOOM_MIN);
+      // Limits depend on zoom, so they are recomputed on every change rather
+      // than captured once.
+      const getLimits = zoom => {
+        const rect = box.getBoundingClientRect();
+        return computePanLimits({
+          frameW: rect.width,
+          frameH: rect.height,
+          imgW: size?.w ?? 0,
+          imgH: size?.h ?? 0,
+          zoom
+        });
+      };
+
+      // Read-only mirrors of this framing elsewhere in the form (the small
+      // image preview beside the shop name), kept in sync without their own
+      // framer so there is only ever one writer per framing key.
+      const mirrors = this.element.querySelectorAll(`[data-frame-preview="${key}"]`);
+
+      const paint = framing => {
+        applyFramingVars(box, framing, "sk-f");
+        for (const mirror of mirrors) applyFramingVars(mirror, framing, "sk-f");
+        const limits = getLimits(framing.zoom);
+        box.classList.toggle("is-pannable", limits.x > 0.01 || limits.y > 0.01);
+      };
+
+      paint(clampToLimits(stored, getLimits(stored.zoom)));
 
       const slider = this.element.querySelector(`[data-zoom-slider][data-frame="${key}"]`);
       const readout = this.element.querySelector(`[data-zoom-readout="${key}"]`);
 
-      const framer = makeFramer(box, initial, framing => {
+      const framer = makeFramer(box, stored, getLimits, framing => {
         this._draft.framing[key] = framing;
-        applyFramingVars(box, framing, "sk-f");
-        box.classList.toggle("is-zoomed", framing.zoom > ZOOM_MIN);
+        paint(framing);
         if (slider && Number(slider.value) !== framing.zoom) slider.value = String(framing.zoom);
         if (readout) readout.textContent = `${framing.zoom.toFixed(2)}x`;
         this._markDirty();

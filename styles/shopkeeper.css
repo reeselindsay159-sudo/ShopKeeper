@@ -90,7 +90,10 @@
   object-fit: cover;
   border: none;
   border-radius: inherit;
-  transform: translate(var(--sk-bx, 0%), var(--sk-by, 0%)) scale(var(--sk-bz, 1));
+  /* --sk-s* is the SHOP framing: this thumbnail is the same square crop the
+     shop page shows, so editing one moves both. The banner framing (--sk-b*)
+     belongs to .sk-bg, the full-bleed layer, and is not used here. */
+  transform: translate(var(--sk-sx, 0%), var(--sk-sy, 0%)) scale(var(--sk-sz, 1));
   transform-origin: center center;
 }
 
@@ -1640,7 +1643,7 @@
 }
 
 .shopkeeper-frame-square { aspect-ratio: 1 / 1; }
-.shopkeeper-frame-wide { aspect-ratio: 16 / 5; }
+.shopkeeper-frame-wide { aspect-ratio: 5 / 1; }
 
 .shopkeeper-frame-box img {
   display: block;
@@ -1653,7 +1656,7 @@
   transform-origin: center center;
 }
 
-.shopkeeper-frame-box.is-zoomed { cursor: grab; }
+.shopkeeper-frame-box.is-pannable { cursor: grab; }
 .shopkeeper-frame-box.is-panning { cursor: grabbing; }
 
 .shopkeeper-frame-grip {
@@ -1670,7 +1673,7 @@
   pointer-events: none;
 }
 
-.shopkeeper-frame-box.is-zoomed:hover .shopkeeper-frame-grip { opacity: 1; }
+.shopkeeper-frame-box.is-pannable:hover .shopkeeper-frame-grip { opacity: 1; }
 
 .shopkeeper-framing-controls {
   display: flex;
@@ -1693,3 +1696,11 @@
 
 /* The shop-image block reuses the same surface, so it needs the same vars. */
 .shopkeeper-edit-image-block .shopkeeper-frame-box { margin-bottom: 4px; }
+
+.shopkeeper-framing-sub {
+  margin: -2px 0 2px;
+  font-size: 0.74em;
+  line-height: 1.35;
+  color: var(--sk-muted);
+  opacity: .85;
+}
