@@ -12,6 +12,31 @@ An in-game shop interface module for Foundry VTT (v13+) and the dnd5e system.
 - **Checkout** deducts gold (auto-converting across pp/gp/ep/sp/cp) from the player's assigned character, adds the purchased items to their inventory, and posts a receipt to chat for the whole table to see. If they can't afford it, they get a "Not enough Coin" popup instead — nothing is charged.
 - **Edit Shops (GM)** — create/delete shops, toggle whether a shop is visible to players, set its image/name/description/accent colour, and drag & drop items from the sidebar, a compendium, or an actor sheet straight into its inventory. Each inventory row has an editable price (gp) and quantity, plus an "unlimited stock" checkbox.
 - **Market themes** — nine visual styles for the Market's shop rows, picked by the GM under **Edit Shops → Market Theme**. The picker previews each theme using your own shop art, and the choice applies to everyone in the world.
+- **Inventory tools** — populate a shop by rolling on any rollable table, auto-generate prices for magic items by rarity, and clear a shop's stock in one click.
+
+## Inventory tools
+
+Each of these sits above the inventory list in the shop editor. All three edit the working copy — **nothing is written to the world until you press Save**, so a mis-click is undone by switching shops and discarding.
+
+**Roll from table.** Pick a rollable table, set how many items you want, and press Load. It keeps rolling until it has that many *items*, so text entries mixed into a loot table don't eat your count, and nested tables resolve normally. Duplicates stack into a single row rather than repeating. You can also drag a rollable table straight onto the drop zone.
+
+This uses `RollTable#roll()` rather than `draw()`, which means **your tables are never modified** — results are not flagged as drawn, so a "draw without replacement" table is left exactly as you set it up.
+
+**Generate Prices.** Rolls a price for every item currently at 0 gp (or with no price at all), based on its magic-item rarity. Items that already have a price are left alone.
+
+| Rarity | Magic item | Consumable |
+| --- | --- | --- |
+| Common | 1d4 × 50 gp | 1d4 × 25 gp |
+| Uncommon | 1d6 × 100 gp | 1d6 × 50 gp |
+| Rare | 1d6 × 1,000 gp | 1d6 × 500 gp |
+| Very rare | 1d6 × 10,000 gp | 1d6 × 5,000 gp |
+| Legendary / artifact | 1d6 × 100,000 gp | 1d6 × 50,000 gp |
+
+An item counts as a consumable when its document type is `consumable` (potions, scrolls, ammunition). Legendary and artifact were not part of the original spec — they continue the same ×10 progression purely so that legendary loot can never sit in a shop at 0 gp, where players could take it for free. To change any of this, edit `RARITY_PRICING` at the top of `scripts/pricing.js`; nothing else needs touching.
+
+Mundane gear has no rarity in dnd5e, so it can't be priced from this table and stays at 0 gp. Those items are called out by name in a warning, highlighted in the inventory list, and flagged with a banner — because **an item at 0 gp is free at checkout**.
+
+**Clear Shop.** Removes every item from the current shop, after a confirmation showing how many will go.
 
 ## Market themes
 

@@ -109,9 +109,47 @@
         </div>
 
         <h3>{{localize "SHOPKEEPER.Edit.Inventory"}}</h3>
+
+        <div class="shopkeeper-tools">
+          <div class="shopkeeper-tool-group">
+            <label class="shopkeeper-tool-label" for="sk-table-id">{{localize "SHOPKEEPER.Tools.FromTable"}}</label>
+            <select id="sk-table-id" name="table-id" {{#unless hasTables}}disabled{{/unless}}>
+              {{#if hasTables}}
+                {{#each tables as |table|}}
+                  <option value="{{table.id}}" {{#if table.selected}}selected{{/if}}>{{table.name}}</option>
+                {{/each}}
+              {{else}}
+                <option value="">{{localize "SHOPKEEPER.Tools.NoTablesOption"}}</option>
+              {{/if}}
+            </select>
+            <input type="number" name="table-count" min="1" max="100" step="1"
+                   value="{{tableCount}}" title="{{localize 'SHOPKEEPER.Tools.CountHint'}}"
+                   {{#unless hasTables}}disabled{{/unless}}>
+            <button type="button" data-action="loadFromTable" {{#unless hasTables}}disabled{{/unless}}>
+              <i class="fa-solid fa-dice-d20"></i> {{localize "SHOPKEEPER.Tools.Load"}}
+            </button>
+          </div>
+
+          <div class="shopkeeper-tool-group shopkeeper-tool-group-right">
+            <button type="button" data-action="generatePrices" title="{{localize 'SHOPKEEPER.Tools.GeneratePricesHint'}}">
+              <i class="fa-solid fa-coins"></i> {{localize "SHOPKEEPER.Tools.GeneratePrices"}}
+            </button>
+            <button type="button" class="shopkeeper-danger-btn" data-action="clearShop">
+              <i class="fa-solid fa-broom"></i> {{localize "SHOPKEEPER.Tools.ClearShop"}}
+            </button>
+          </div>
+        </div>
+
         <div class="shopkeeper-dropzone">
           <i class="fa-solid fa-hand-pointer"></i> {{localize "SHOPKEEPER.Edit.DropHint"}}
         </div>
+
+        {{#if freeCount}}
+          <p class="shopkeeper-free-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            {{localize "SHOPKEEPER.Tools.FreeWarning"}}
+          </p>
+        {{/if}}
 
         {{#if hasInventory}}
           <table class="shopkeeper-edit-inventory-table">
@@ -125,14 +163,18 @@
               </tr>
             </thead>
             <tbody class="shopkeeper-edit-inventory-list">
-              {{#each draft.inventory as |entry|}}
-                <tr class="shopkeeper-edit-inventory-row" data-entry-id="{{entry.id}}">
+              {{#each inventory as |entry|}}
+                <tr class="shopkeeper-edit-inventory-row{{#if entry.isFree}} is-free{{/if}}" data-entry-id="{{entry.id}}">
                   <td class="shopkeeper-item-name">
                     <img class="shopkeeper-item-icon" src="{{entry.img}}" alt="">
                     <span>{{entry.name}}</span>
+                    {{#if entry.rarityLabel}}
+                      <span class="shopkeeper-rarity shopkeeper-rarity-{{entry.rarity}}">{{entry.rarityLabel}}</span>
+                    {{/if}}
                   </td>
                   <td class="col-price">
-                    <input type="number" min="0" step="0.01" data-price-input value="{{entry.price}}">
+                    <input type="number" min="0" step="0.01" data-price-input value="{{entry.price}}"
+                           title="{{#if entry.isFree}}{{localize 'SHOPKEEPER.Tools.FreeItemHint'}}{{/if}}">
                   </td>
                   <td class="col-qty">
                     <input type="number" min="0" step="1" data-qty-input value="{{entry.quantity}}" {{#if (lt entry.quantity 0)}}disabled{{/if}}>
@@ -151,7 +193,8 @@
           </table>
         {{/if}}
 
-        <div class="shopkeeper-edit-save-row">
+        <div class="shopkeeper-edit-save-row{{#if dirty}} is-dirty{{/if}}">
+          <span class="shopkeeper-dirty-note">{{localize "SHOPKEEPER.Edit.Unsaved"}}</span>
           <button type="button" class="shopkeeper-save-btn" data-action="save">
             <i class="fa-solid fa-floppy-disk"></i> {{localize "SHOPKEEPER.Edit.Save"}}
           </button>
