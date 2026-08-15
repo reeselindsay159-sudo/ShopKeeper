@@ -102,6 +102,17 @@
   border: none;
   border-radius: inherit;
   transform: translate(-50%, -50%) translate(var(--sk-sx, 0%), var(--sk-sy, 0%));
+  /* Foundry's core stylesheet applies `img { max-width: 100% }`. Without this
+     override the browser silently clamps the framed image back to the frame's
+     width, and object-fit then crops the sides off — making the left and right
+     of the picture unreachable no matter how far you pan. Height was never
+     clamped, which is why vertical panning appeared to work and horizontal did
+     not, and why the banner (a background-image, not an <img>) was unaffected. */
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
 }
 
 .sk-text {
@@ -819,8 +830,20 @@
    Individual shop
    ------------------------------------------------------------------------- */
 
+/* The template's root element. It needs to be a full-height flex column in its
+   own right: the `.shopkeeper` rule above lands on the Application's root
+   element (via DEFAULT_OPTIONS.classes), not on this inner div, so without this
+   the div was a plain auto-height block. That meant `.shopkeeper-shop-main`
+   sized to its content instead of to the window, and the inventory's
+   `overflow-y: auto` never had a constrained height to scroll within — so a
+   long shop simply overflowed with no scrollbar. */
 .shopkeeper-shop {
+  display: flex;
+  flex-direction: column;
   gap: 0.5em;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
 }
 
 .shopkeeper-shop-main {
@@ -858,6 +881,17 @@
   object-fit: cover;
   border: none;
   transform: translate(-50%, -50%) translate(var(--sk-sx, 0%), var(--sk-sy, 0%));
+  /* Foundry's core stylesheet applies `img { max-width: 100% }`. Without this
+     override the browser silently clamps the framed image back to the frame's
+     width, and object-fit then crops the sides off — making the left and right
+     of the picture unreachable no matter how far you pan. Height was never
+     clamped, which is why vertical panning appeared to work and horizontal did
+     not, and why the banner (a background-image, not an <img>) was unaffected. */
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
 }
 
 .shopkeeper-shop-desc {
@@ -869,7 +903,9 @@
 .shopkeeper-shop-inventory {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--sk-border);
   border-radius: 6px;
 }
@@ -1668,6 +1704,17 @@
   border: none;
   pointer-events: none;
   transform: translate(-50%, -50%) translate(var(--sk-fx, 0%), var(--sk-fy, 0%));
+  /* Foundry's core stylesheet applies `img { max-width: 100% }`. Without this
+     override the browser silently clamps the framed image back to the frame's
+     width, and object-fit then crops the sides off — making the left and right
+     of the picture unreachable no matter how far you pan. Height was never
+     clamped, which is why vertical panning appeared to work and horizontal did
+     not, and why the banner (a background-image, not an <img>) was unaffected. */
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
 }
 
 .shopkeeper-frame-box.is-pannable { cursor: grab; }
@@ -1799,4 +1846,69 @@
   font-style: italic;
   opacity: .8;
   flex: 1 1 100%;
+}
+
+
+/* =========================================================================
+   Scrollbars in the player-facing shop window
+   -------------------------------------------------------------------------
+   Made explicitly visible rather than left to the OS: on macOS overlay
+   scrollbars are hidden until you actually scroll, so a player with a long
+   inventory had no indication there was more below.
+   ========================================================================= */
+
+.shopkeeper-shop-inventory,
+.shopkeeper-cart-list,
+.shopkeeper-market-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sk-accent) transparent;
+}
+
+.shopkeeper-shop-inventory::-webkit-scrollbar,
+.shopkeeper-cart-list::-webkit-scrollbar,
+.shopkeeper-market-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.shopkeeper-shop-inventory::-webkit-scrollbar-track,
+.shopkeeper-cart-list::-webkit-scrollbar-track,
+.shopkeeper-market-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, .12);
+  border-radius: 5px;
+}
+
+.shopkeeper-shop-inventory::-webkit-scrollbar-thumb,
+.shopkeeper-cart-list::-webkit-scrollbar-thumb,
+.shopkeeper-market-list::-webkit-scrollbar-thumb {
+  background: var(--sk-accent);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.shopkeeper-shop-inventory::-webkit-scrollbar-thumb:hover,
+.shopkeeper-cart-list::-webkit-scrollbar-thumb:hover {
+  background: var(--sk-accent-dark);
+  background-clip: content-box;
+}
+
+/* The sticky header must sit above rows scrolling underneath it. */
+.shopkeeper-inventory-table thead th {
+  z-index: 2;
+}
+
+/* Keep the cart usable when it is full: it never eats the whole window, and
+   scrolls internally once it passes its share. */
+.shopkeeper-cart {
+  min-height: 0;
+}
+
+.shopkeeper-cart-list {
+  max-height: 100%;
+}
+
+
+/* An empty cart should not eat vertical space the item list could use. */
+.shopkeeper-cart .shopkeeper-empty {
+  padding: 0.6em 1em;
 }

@@ -32,6 +32,8 @@ The whole image is reachable. Images are laid out to cover the frame, so a squar
 
 Pan is stored as a fraction of the available travel rather than in pixels or percent-of-frame, so a crop looks the same on a player's screen as it did in the editor, whatever size their window is.
 
+Foundry's core stylesheet applies `img { max-width: 100% }`, which silently clamps a zoomed image back to its frame's width and crops the sides off unreachably. The module explicitly releases that constraint on framed images — worth knowing if you ever restyle them.
+
 Framing is stored per shop and applies for every player. Shops made before this version default to 1x with no pan, which is exactly how they looked previously.
 
 ## Inventory tools

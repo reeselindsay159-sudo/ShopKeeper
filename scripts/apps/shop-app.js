@@ -36,7 +36,10 @@ export class ShopApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static PARTS = {
     content: {
       template: `modules/${MODULE_ID}/templates/shop.hbs`,
-      scrollable: [".shopkeeper-inventory-list"]
+      // These must name the elements that actually scroll, so Foundry restores
+      // their positions across re-renders. .shopkeeper-inventory-list is the
+      // <tbody>, which is not the scrolling box.
+      scrollable: [".shopkeeper-shop-inventory", ".shopkeeper-cart-list"]
     }
   };
 
