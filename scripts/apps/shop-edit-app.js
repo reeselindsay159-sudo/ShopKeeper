@@ -4,11 +4,13 @@ import {
   getTheme, setTheme, bannerImageFor
 } from "../shop-data.js";
 import { applyRowVars, cssUrl } from "../theme.js";
-import { getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntry } from "../tables.js";
+import {
+  getWorldTables, rollItemsFromTable, mergeItemsIntoInventory, makeInventoryEntryAsync
+} from "../tables.js";
 import { generateMissingPrices, getRarity } from "../pricing.js";
 import {
   makeFramer, writeFramingVars, sanitizeFraming, defaultFraming, normalizeFramingSet,
-  computeScale, getImageSize, FIT_FILL, FIT_CONTAIN,
+  computeScale, getImageSize, measureImgElement, clearFramingVars, FIT_FILL, FIT_CONTAIN,
   ZOOM_MIN, ZOOM_MAX, ZOOM_STEP
 } from "../framing.js";
 
@@ -294,23 +296,52 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const mirrors = this.element.querySelectorAll(`[data-frame-preview="${key}"]`);
 
       const applyTo = (el, framing) => {
-        const rect = el.getBoundingClientRect();
-        const fa = rect.height > 0 ? rect.width / rect.height : 0;
-        const ia = size && size.h > 0 ? size.w / size.h : 0;
-        const { kx, ky } = computeScale({ frameAspect: fa, imgAspect: ia, zoom: framing.zoom, fit: framing.fit });
-        writeFramingVars(el, { framing, kx, ky, prefix: "sk-f" });
         el.classList.toggle("is-fit", framing.fit === FIT_CONTAIN);
         if (sources[key]) el.style.setProperty("--sk-src", cssUrl(sources[key]));
+
+        // Take the natural size from the element's own <img> when the shared
+        // probe has not resolved yet.
+        size ??= measureImgElement(el.querySelector("img"));
+
+        const rect = el.getBoundingClientRect();
+        const fa = rect.height > 0 && rect.width > 0 ? rect.width / rect.height : 0;
+        const ia = size && size.h > 0 && size.w > 0 ? size.w / size.h : 0;
+
+        // Never write a guessed layout — see the comment in framing.js. The
+        // framing panel starts collapsed, so this box genuinely measures 0x0 on
+        // the first paint, and guessing there is what made part of the picture
+        // unreachable.
+        if (!fa || !ia) {
+          clearFramingVars(el, "sk-f");
+          return null;
+        }
+
+        const { kx, ky } = computeScale({ frameAspect: fa, imgAspect: ia, zoom: framing.zoom, fit: framing.fit });
+        writeFramingVars(el, { framing, kx, ky, prefix: "sk-f" });
         return { kx, ky };
       };
 
       const paint = framing => {
         const g = applyTo(box, framing);
         for (const mirror of mirrors) applyTo(mirror, framing);
-        box.classList.toggle("is-pannable", g.kx > 1.001 || g.ky > 1.001);
+        box.classList.toggle("is-pannable", !!g && (g.kx > 1.001 || g.ky > 1.001));
+        return !!g;
       };
 
-      paint(stored);
+      if (!paint(stored)) requestAnimationFrame(() => paint(this._draft.framing?.[key] ?? stored));
+
+      // The <img> may not have decoded on first paint.
+      const boxImg = box.querySelector("img");
+      if (boxImg && !boxImg.complete) {
+        boxImg.addEventListener("load", () => paint(this._draft.framing?.[key] ?? stored), { once: true });
+      }
+
+      // Opening the collapsed framing panel is a size change from 0, so this
+      // also covers the first real measurement.
+      const details = this.element.querySelector(".shopkeeper-framing");
+      if (details) {
+        details.addEventListener("toggle", () => paint(this._draft.framing?.[key] ?? stored));
+      }
 
       // Keep the preview correct if the GM resizes the Edit Shops window: the
       // frame's aspect feeds the layout, so a stale value would show a crop
@@ -432,7 +463,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     this._syncFormIntoDraft();
-    this._draft.inventory.push(makeInventoryEntry(item));
+    this._draft.inventory.push(await makeInventoryEntryAsync(item));
     this._markDirty();
     this.render();
   }
@@ -466,7 +497,7 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
 
-    const { added, stacked } = mergeItemsIntoInventory(this._draft.inventory, items);
+    const { added, stacked, scrolls } = await mergeItemsIntoInventory(this._draft.inventory, items);
     this._markDirty();
     this.render();
 
@@ -476,6 +507,9 @@ export class ShopEditApp extends HandlebarsApplicationMixin(ApplicationV2) {
       added,
       stacked
     });
+    if (scrolls) {
+      message += " " + game.i18n.format("SHOPKEEPER.Tools.ScrollsMade", { count: scrolls });
+    }
     if (items.length < wanted) {
       message += " " + game.i18n.format("SHOPKEEPER.Tools.TableShort", { wanted });
     }

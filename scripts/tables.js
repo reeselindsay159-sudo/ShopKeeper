@@ -1,6 +1,7 @@
 /**
  * Populating a shop's inventory by rolling on a RollTable.
  */
+import { isSpell, makeScrollFromSpell } from "./scrolls.js";
 
 /** @returns {{id:string,name:string}[]} world RollTables, sorted by name */
 export function getWorldTables() {
@@ -67,6 +68,7 @@ export async function rollItemsFromTable(table, count) {
   let attempts = 0;
   let nonItems = 0;
   let emptyRolls = 0;
+  let spells = 0;
 
   while (items.length < wanted && attempts < maxAttempts) {
     attempts++;
@@ -89,12 +91,14 @@ export async function rollItemsFromTable(table, count) {
     for (const result of results) {
       if (items.length >= wanted) break;
       const item = await resolveResultToItem(result);
-      if (item) items.push(item);
-      else nonItems++;
+      if (item) {
+        if (isSpell(item)) spells++;
+        items.push(item);
+      } else nonItems++;
     }
   }
 
-  return { items, attempts, nonItems, emptyRolls };
+  return { items, attempts, nonItems, emptyRolls, spells };
 }
 
 /**
@@ -115,6 +119,35 @@ export function makeInventoryEntry(item) {
 }
 
 /**
+ * Convert an Item into an inventory entry, turning spells into spell scrolls.
+ *
+ * A spell is an Item in dnd5e, so without this a spell rolled off a loot table
+ * would land in the shop as a raw spell: no price, and nothing a player can
+ * actually buy and use.
+ *
+ * @param {Item} item
+ * @returns {Promise<object>}
+ */
+export async function makeInventoryEntryAsync(item) {
+  if (!isSpell(item)) return makeInventoryEntry(item);
+
+  const scroll = await makeScrollFromSpell(item);
+  if (!scroll) return makeInventoryEntry(item);
+
+  return {
+    id: foundry.utils.randomID(),
+    name: scroll.name,
+    img: scroll.img,
+    price: scroll.pricing.price,
+    quantity: 1,
+    // Keyed to the source spell so repeat rolls stack onto one scroll row.
+    sourceUuid: item.uuid ?? null,
+    fromSpell: true,
+    itemData: scroll.itemData
+  };
+}
+
+/**
  * Merge rolled items into an existing inventory, stacking repeats rather than
  * creating duplicate rows.
  *
@@ -122,9 +155,10 @@ export function makeInventoryEntry(item) {
  * @param {Item[]} items
  * @returns {{added: number, stacked: number}}
  */
-export function mergeItemsIntoInventory(inventory, items) {
+export async function mergeItemsIntoInventory(inventory, items) {
   let added = 0;
   let stacked = 0;
+  let scrolls = 0;
 
   for (const item of items) {
     const uuid = item.uuid ?? null;
@@ -139,10 +173,12 @@ export function mergeItemsIntoInventory(inventory, items) {
       if (existing.quantity >= 0) existing.quantity += 1;
       stacked++;
     } else {
-      inventory.push(makeInventoryEntry(item));
+      const entry = await makeInventoryEntryAsync(item);
+      if (entry.fromSpell) scrolls++;
+      inventory.push(entry);
       added++;
     }
   }
 
-  return { added, stacked };
+  return { added, stacked, scrolls };
 }

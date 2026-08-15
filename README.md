@@ -58,6 +58,22 @@ Mundane gear has no rarity in dnd5e, so it can't be priced from this table and s
 
 **Clear Shop.** Removes every item from the current shop, after a confirmation showing how many will go.
 
+### Spells become spell scrolls
+
+In dnd5e a spell is an Item, so a spell sitting on a loot table would otherwise drop into a shop as a raw spell — unpriced, and useless to a player who bought it. Any spell rolled off a table (or dragged onto the drop zone) is converted into a **spell scroll** instead, using the system's own `createScrollFromSpell` so the scroll carries the right description, save DC and attack bonus for its level. If that API is unavailable the module builds an equivalent consumable itself, so a roll is never silently dropped.
+
+Scroll price is **base cost for the spell's level, plus the cost of any material components** the spell requires:
+
+| Spell level | Base | | Spell level | Base |
+| --- | --- | --- | --- | --- |
+| Cantrip | 50 gp | | 5th | 2,500 gp |
+| 1st | 50 gp | | 6th | 25,000 gp |
+| 2nd | 250 gp | | 7th | 25,000 gp |
+| 3rd | 250 gp | | 8th | 25,000 gp |
+| 4th | 2,500 gp | | 9th | 50,000 gp |
+
+So a scroll of *Revivify* (3rd level, 300 gp diamond) prices at 250 + 300 = 550 gp. The base table is the DMG's suggested purchase prices for consumables; to switch to Xanathar's crafting costs instead, edit `SCROLL_BASE_PRICE` at the top of `scripts/scrolls.js` — the alternative numbers are written out in the comment there. Scrolls are priced on creation, so Generate Prices leaves them alone.
+
 ## Market themes
 
 | Theme | Look |

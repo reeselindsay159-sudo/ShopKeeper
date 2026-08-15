@@ -105,7 +105,8 @@
       "Cleared": "Removed {count} item(s). Click Save to apply.",
       "AlreadyEmpty": "This shop is already empty.",
       "FreeWarning": "Some items are priced at 0 gp and will be free for players to take.",
-      "FreeItemHint": "This item is free at 0 gp."
+      "FreeItemHint": "This item is free at 0 gp.",
+      "ScrollsMade": "{count} spell(s) were turned into spell scrolls."
     },
     "Edit": {
       "Title": "Edit Shops",

@@ -225,33 +225,75 @@ export function writeFramingVars(el, { framing, kx, ky, prefix }) {
  */
 export async function attachFramedImage(varTarget, { src, framing, prefix, frameEl }) {
   const frame = frameEl ?? varTarget;
-  const size = await getImageSize(src);
+  // Prefer the real <img> already in the DOM over a separate probe: its
+  // naturalWidth is authoritative and costs nothing.
+  const domImg = varTarget.querySelector?.("img") ?? null;
+  let size = measureImgElement(domImg) ?? (await getImageSize(src));
 
   const paint = () => {
     const f = sanitizeFraming(framing);
-    const rect = frame.getBoundingClientRect();
-    const frameAspect = rect.height > 0 ? rect.width / rect.height : 0;
-    const imgAspect = size && size.h > 0 ? size.w / size.h : 0;
-    const { kx, ky } = computeScale({ frameAspect, imgAspect, zoom: f.zoom, fit: f.fit });
-    writeFramingVars(varTarget, { framing: f, kx, ky, prefix });
-    // Contain mode needs a backdrop behind the letterboxed image.
     varTarget.classList.toggle("is-fit", f.fit === FIT_CONTAIN);
     if (src) varTarget.style.setProperty("--sk-src", cssUrlLocal(src));
+
+    size ??= measureImgElement(domImg);
+
+    const rect = frame.getBoundingClientRect();
+    const frameAspect = rect.height > 0 && rect.width > 0 ? rect.width / rect.height : 0;
+    const imgAspect = size && size.h > 0 && size.w > 0 ? size.w / size.h : 0;
+
+    // If either measurement is unusable — a collapsed <details>, a hidden tab,
+    // an image that has not decoded yet — DO NOT write a guessed layout. The
+    // old fallback (kx = ky = zoom) silently produced a square element for a
+    // wide picture, which object-fit then cropped, leaving part of the image
+    // permanently unreachable no matter how far you panned. Clearing the vars
+    // instead falls back to the plain CSS default until a real measurement
+    // arrives.
+    if (!frameAspect || !imgAspect) {
+      clearFramingVars(varTarget, prefix);
+      return false;
+    }
+
+    const { kx, ky } = computeScale({ frameAspect, imgAspect, zoom: f.zoom, fit: f.fit });
+    writeFramingVars(varTarget, { framing: f, kx, ky, prefix });
+    return true;
   };
 
-  paint();
+  const painted = paint();
+
+  // Retry paths for each way the first measurement can legitimately fail.
+  const retry = () => paint();
+  if (!painted) requestAnimationFrame(retry);
+  if (domImg && !domImg.complete) domImg.addEventListener("load", retry, { once: true });
 
   let observer = null;
   if (typeof ResizeObserver !== "undefined") {
-    observer = new ResizeObserver(() => paint());
+    observer = new ResizeObserver(retry);
     observer.observe(frame);
+    if (frame !== varTarget) observer.observe(varTarget);
   }
 
   return {
     destroy() {
       observer?.disconnect();
+      domImg?.removeEventListener("load", retry);
     }
   };
+}
+
+/** @returns {{w:number,h:number}|null} natural size of a loaded <img>, if usable */
+export function measureImgElement(img) {
+  if (!img) return null;
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+/** Remove framing vars so the element falls back to its plain CSS default. */
+export function clearFramingVars(el, prefix) {
+  if (!el) return;
+  for (const suffix of ["w", "h", "x", "y"]) {
+    el.style.removeProperty(`--${prefix}${suffix}`);
+  }
 }
 
 /* -------------------------------------------- */
